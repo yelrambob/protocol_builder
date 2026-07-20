@@ -1,40 +1,18 @@
-# protocol_builder
-inorder to parse protocols in an easier to read format. 
+# Protocol Builder
 
+Reads a GE `Protocols.xlsm` workbook with Apache POI and prints a compact summary of detected protocol worksheets. Recognized fields populate the typed model; notes/comments and unknown worksheet fields are retained in `Protocol.notes` and `Protocol.advanced`.
 
-GEProtocolBook
-│
-├── build.gradle
-├── settings.gradle
-├── README.md
-│
-└── src
-    └── main
-        ├── java
-        │   └── com
-        │       └── protocolbook
-        │           ├── Main.java
-        │           │
-        │           ├── model
-        │           │      Protocol.java
-        │           │      Metadata.java
-        │           │      PatientSetup.java
-        │           │      Contrast.java
-        │           │      Acquisition.java
-        │           │      Dose.java
-        │           │      Series.java
-        │           │      Reconstruction.java
-        │           │      Timing.java
-        │           │
-        │           ├── parser
-        │           │      ProtocolParser.java
-        │           │      GEWorkbookParser.java
-        │           │
-        │           ├── generator
-        │           │      JsonExporter.java
-        │           │
-        │           └── util
-        │
-        └── resources
-            ├── css
-            └── templates
+## Run
+
+Requires Java 8+ and Gradle 8.x (or the included wrapper once generated).
+
+```powershell
+gradle test
+gradle run --args="C:\path\to\Protocols.xlsm"
+```
+
+With `Protocols.xlsm` in this directory, `gradle run` is sufficient. Parse/validation failures are printed as `ERROR:` messages and return exit code 2.
+
+## VS Code
+
+Install **Extension Pack for Java** and **Gradle for Java**, open this `protocol_builder` folder, then run the Gradle `application > run` task. To pass a workbook path, use the integrated terminal command above.
