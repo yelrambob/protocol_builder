@@ -6,6 +6,12 @@ plugins {
 group = 'com.protocolbook'
 version = '1.0'
 
+// VS Code/OneDrive can keep generated class directories locked on Windows.
+// Put disposable output outside OneDrive, with an explicit override available for CI.
+def localBuildRoot = System.getenv('LOCALAPPDATA')
+def defaultBuildDir = localBuildRoot ? new File(localBuildRoot, 'protocol-builder/gradle-build').absolutePath : '.gradle-local/build'
+layout.buildDirectory = file(providers.gradleProperty('protocolBuildDir').getOrElse(defaultBuildDir))
+
 repositories {
     mavenCentral()
 }
@@ -13,6 +19,7 @@ repositories {
 dependencies {
     implementation 'org.apache.poi:poi-ooxml:5.4.1'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.1'
 }
 
 application {
