@@ -80,6 +80,6 @@ class ProtocolBookHtmlWriterTest {
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
         // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
-        assertTrue(html.contains("140 kV &middot; 100-635 mA"), "SmartmA groups should show the min-max range, not the stale fixed mA value");
+        assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
     }
 }

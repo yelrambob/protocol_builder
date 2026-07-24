@@ -102,6 +102,7 @@ public class ProtocolBookHtmlWriter {
         boolean autoMa = a.getMaMode() != null && a.getMinMa() != null && a.getMaxMa() != null;
         html.append("<p class=\"acquisition\">").append(esc(a.getKv())).append(" kV &middot; ")
                 .append(autoMa ? esc(a.getMinMa()) + "-" + esc(a.getMaxMa()) : esc(a.getMa())).append(" mA");
+        if (a.getNoiseIndex() != null) html.append(" (NI ").append(esc(a.getNoiseIndex())).append(")");
         if (a.getPitch() != null) html.append(" &middot; pitch ").append(esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(esc(a.getRotationTime())).append(" s rotation");
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(esc(g.getDose().getCtdi())).append(" mGy");
