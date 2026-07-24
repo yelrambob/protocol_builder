@@ -3,7 +3,8 @@ setlocal
 
 rem Usage:
 rem   run-protocol-book.bat
-rem       Uses the sample data checked into this repo ("protocol data").
+rem       Uses the "protocol data" folder in this repo (not tracked by git -
+rem       put your real exported protocol folders there).
 rem   run-protocol-book.bat "C:\path\to\ProtocolData"
 rem   Or just drag-and-drop your ProtocolData folder onto this .bat file in Explorer.
 rem

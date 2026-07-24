@@ -8,7 +8,8 @@ rem it only adds new protocol numbers and never touches existing notes.
 rem
 rem Usage:
 rem   init-protocol-overrides.bat
-rem       Uses the sample data checked into this repo ("protocol data").
+rem       Uses the "protocol data" folder in this repo (not tracked by git -
+rem       put your real exported protocol folders there).
 rem   init-protocol-overrides.bat "C:\path\to\ProtocolData"
 rem   Or drag-and-drop your ProtocolData folder onto this .bat file in Explorer.
 

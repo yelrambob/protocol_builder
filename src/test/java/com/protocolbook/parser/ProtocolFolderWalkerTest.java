@@ -13,11 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Integration test against the real, sanitized GE Revolution exports checked in under
- * "protocol data" - one folder per protocol, each holding protocolmetadata.json + UIRx.xml
- * (+ session.xml, whose CTReconTask DESCRIPTION/SELECTED_GROUP_PATHS supply the display names).
+ * src/test/resources/sample-protocols - one folder per protocol, each holding
+ * protocolmetadata.json + UIRx.xml (+ session.xml, whose CTReconTask
+ * DESCRIPTION/SELECTED_GROUP_PATHS supply the display names).
  */
 class ProtocolFolderWalkerTest {
-    private static final File FIXTURE_ROOT = new File("protocol data");
+    private static final File FIXTURE_ROOT = new File("src/test/resources/sample-protocols");
 
     @Test void walksAllRealProtocolFolders() throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
