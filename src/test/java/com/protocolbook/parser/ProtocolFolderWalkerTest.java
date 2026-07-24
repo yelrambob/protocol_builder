@@ -47,6 +47,11 @@ class ProtocolFolderWalkerTest {
         assertEquals(1.45, group.getDose().getCtdi());
         assertEquals(34.84, group.getDose().getDlp());
         assertEquals(140, Integer.parseInt(group.getAcquisition().getKv()));
+        // SmartmA is active here (milliAmpsMode present): the flat "milliAmps" is a stale fallback
+        // value the console keeps around, minMa/maxMa is the real setting
+        assertNotNull(group.getAcquisition().getMaMode());
+        assertEquals("100", group.getAcquisition().getMinMa());
+        assertEquals("635", group.getAcquisition().getMaxMa());
 
         Reconstruction primaryRecon = group.getReconstructions().get(0);
         assertEquals("AXIAL KNEE DET 2.5MM", primaryRecon.getName(), "display name should come from session.xml, joined via SELECTED_GROUP_PATHS");

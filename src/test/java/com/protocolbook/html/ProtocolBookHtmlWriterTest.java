@@ -71,4 +71,15 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(coronalRow > 0);
         assertTrue(html.substring(coronalRow, coronalRow + 200).contains(">STD<"), "reformat row should show the inherited/mapped kernel");
     }
+
+    @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>()), out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
+        // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
+        assertTrue(html.contains("140 kV &middot; 100-635 mA"), "SmartmA groups should show the min-max range, not the stale fixed mA value");
+    }
 }

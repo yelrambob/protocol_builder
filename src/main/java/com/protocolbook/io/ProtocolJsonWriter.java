@@ -110,7 +110,8 @@ public class ProtocolJsonWriter {
         JSONObject j = new JSONObject();
         if (a == null) return j;
         put(j, "kv", a.getKv()); put(j, "ma", a.getMa()); put(j, "minMa", a.getMinMa()); put(j, "maxMa", a.getMaxMa());
-        put(j, "noiseIndex", a.getNoiseIndex()); put(j, "rotationTime", a.getRotationTime()); put(j, "pitch", a.getPitch());
+        put(j, "noiseIndex", a.getNoiseIndex()); put(j, "maMode", a.getMaMode());
+        put(j, "rotationTime", a.getRotationTime()); put(j, "pitch", a.getPitch());
         put(j, "detector", a.getDetector()); put(j, "sliceThickness", a.getSliceThickness()); put(j, "interval", a.getInterval());
         put(j, "fieldOfView", a.getFieldOfView()); put(j, "matrix", a.getMatrix());
         return j;

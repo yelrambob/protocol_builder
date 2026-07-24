@@ -196,6 +196,7 @@ public class UIRxProtocolParser {
         a.setMa(vals.remove("milliAmps"));
         a.setMinMa(vals.remove("milliAmpsMin"));
         a.setMaxMa(vals.remove("milliAmpsMax"));
+        a.setMaMode(vals.remove("milliAmpsMode"));
         a.setNoiseIndex(vals.remove("referenceNoiseIndex"));
         a.setPitch(vals.remove("pitch"));
         a.setRotationTime(vals.remove("rotationTime"));
