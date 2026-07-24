@@ -88,7 +88,8 @@ public class ProtocolBookHtmlWriter {
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
-            html.append("<tr><td>").append(esc(r.getName())).append("</td><td>").append(esc(r.getThickness()))
+            html.append("<tr><td>").append(esc(r.getName())).append(r.isDerived() ? " <em>(reformat)</em>" : "")
+                    .append("</td><td>").append(esc(r.getThickness()))
                     .append("</td><td>").append(esc(r.getInterval())).append("</td><td>").append(esc(r.getKernel())).append("</td></tr>\n");
         }
         html.append("</table>\n");

@@ -38,10 +38,25 @@ public final class ProtocolOverrides {
         return out;
     }
 
-    /** Writes a starter overrides file (one empty entry per protocol number) for hand-editing. */
-    public static void writeTemplate(java.util.List<String> protocolNumbers, File file) throws IOException {
+    /**
+     * Adds an empty entry for any of the given protocol numbers not already present in the file
+     * (creating the file if it doesn't exist yet). Existing entries - and their notes/exclusion -
+     * are left untouched. Returns how many new entries were added.
+     */
+    public static int mergeTemplate(java.util.List<String> protocolNumbers, File file) throws IOException {
+        Map<String, ProtocolOverride> existing = load(file);
         JSONObject json = new JSONObject();
-        for (String number : protocolNumbers) if (number != null) json.put(number, new JSONObject().put("notes", "").put("excluded", false));
+        for (Map.Entry<String, ProtocolOverride> e : existing.entrySet()) {
+            ProtocolOverride o = e.getValue();
+            json.put(e.getKey(), new JSONObject().put("notes", o.getNotes() == null ? "" : o.getNotes()).put("excluded", o.isExcluded()));
+        }
+        int added = 0;
+        for (String number : protocolNumbers) {
+            if (number == null || json.has(number)) continue;
+            json.put(number, new JSONObject().put("notes", "").put("excluded", false));
+            added++;
+        }
         try (FileWriter w = new FileWriter(file)) { w.write(json.toString(2)); }
+        return added;
     }
 }

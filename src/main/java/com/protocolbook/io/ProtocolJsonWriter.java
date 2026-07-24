@@ -53,7 +53,7 @@ public class ProtocolJsonWriter {
         put(j, "patientType", m.getPatientType()); put(j, "bodyPart", m.getBodyPart());
         put(j, "category", m.getCategory()); put(j, "version", m.getVersion());
         put(j, "scanner", m.getScanner()); put(j, "clinicalIndication", m.getClinicalIndication());
-        put(j, "library", m.getLibrary()); put(j, "uuid", m.getUuid());
+        put(j, "library", m.getLibrary()); put(j, "uuid", m.getUuid()); put(j, "lastUpdated", m.getLastUpdated());
         return j;
     }
 
@@ -123,6 +123,7 @@ public class ProtocolJsonWriter {
         put(j, "dfov", r.getDfov()); put(j, "windowLevel", r.getWindowLevel()); put(j, "windowWidth", r.getWindowWidth());
         put(j, "iterativeConfig", r.getIterativeConfig()); put(j, "startLocation", r.getStartLocation());
         put(j, "endLocation", r.getEndLocation()); put(j, "numberOfImages", r.getNumberOfImages());
+        j.put("derived", r.isDerived());
         return j;
     }
 

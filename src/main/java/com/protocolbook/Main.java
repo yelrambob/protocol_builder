@@ -45,11 +45,10 @@ public class Main {
             }
 
             if (initOverrides) {
-                if (overridesFile.isFile()) throw new IllegalStateException(overridesFile + " already exists; delete or rename it first, or pass --overrides <other file>");
                 List<String> numbers = new java.util.ArrayList<String>();
                 for (Protocol p : protocols) if (p.getMetadata() != null) numbers.add(p.getMetadata().getProtocolNumber());
-                ProtocolOverrides.writeTemplate(numbers, overridesFile);
-                System.out.println("Wrote starter overrides file to " + overridesFile.getAbsolutePath() + " (" + numbers.size() + " protocol(s))");
+                int added = ProtocolOverrides.mergeTemplate(numbers, overridesFile);
+                System.out.println("Overrides file " + overridesFile.getAbsolutePath() + ": added " + added + " new protocol(s), existing entries left untouched");
             }
             if (jsonDir != null) {
                 new ProtocolJsonWriter().writeAll(protocols, jsonDir);
