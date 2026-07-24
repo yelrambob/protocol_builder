@@ -1,0 +1,46 @@
+{
+  "protocolVersion" : "1.0",
+  "slotNumber" : "7.2",
+  "name" : "CT LUMBAR SPINE WITH CONTRAST",
+  "path" : "/usr/g/ctdesktop/wf_revo/resources/protocols/Site/1-16-26-1768567951594",
+  "humanoid" : "adult",
+  "anatomyRegion" : "spine",
+  "library" : "Site",
+  "uri" : "protocol://Site@local/1-16-26-1768567951594/session.xml",
+  "colorCode" : null,
+  "dependency" : {
+    "autoGatingProfile" : null,
+    "contrastProfile" : false,
+    "gsiProfile" : null,
+    "autoVoiceProfile" : null,
+    "reformatProfile" : null,
+    "injectorProfiles" : null,
+    "requestedProcedures" : [ {
+      "value" : "CT LUMBAR SPINE W CONTRAST"
+    } ],
+    "kvAssistProfiles" : null,
+    "autoVoices" : null,
+    "revolutionAutoVoiceProfile" : null,
+    "revolutionReformatProfile" : null,
+    "networkSettingProfile" : {
+      "profileKey" : "NW_380cc63a-4d7b-46be-93b2-ad8de0a529b9",
+      "checksum" : "90f8341c5fb3c27e743f82ca820b365f20cfa2eba2d5fc61c102a58f177f5ccd",
+      "version" : null,
+      "fileName" : "/protomgmt/ProtocolData/8ec6d1c0_6bde_4cc3_81e1_6e846414300c/NetworkSetting/NW_380cc63a-4d7b-46be-93b2-ad8de0a529b9.json",
+      "structureChecksum" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "ipmSoftwareVersion" : null,
+  "options" : [ "3D Dose Modulation", "Smart MAR" ],
+  "uuid" : "380cc63a-4d7b-46be-93b2-ad8de0a529b9",
+  "checksum" : null,
+  "lastUpdatedDateTime" : "2026-07-15T09:33:42.000-0400",
+  "systemId" : null,
+  "fileName" : null,
+  "favorite" : false,
+  "networkSettingChecksum" : "90f8341c5fb3c27e743f82ca820b365f20cfa2eba2d5fc61c102a58f177f5ccd",
+  "softwareVersion" : null,
+  "metaAttributes" : { },
+  "conflicts" : [ ],
+  "parameters" : { }
+}

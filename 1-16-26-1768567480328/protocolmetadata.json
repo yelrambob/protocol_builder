@@ -1,0 +1,46 @@
+{
+  "protocolVersion" : "1.0",
+  "slotNumber" : "3.7",
+  "name" : "CT CERVICAL SPINE WITH CONTRAST",
+  "path" : "/usr/g/ctdesktop/wf_revo/resources/protocols/Site/1-16-26-1768567480328",
+  "humanoid" : "adult",
+  "anatomyRegion" : "neck",
+  "library" : "Site",
+  "uri" : "protocol://Site@local/1-16-26-1768567480328/session.xml",
+  "colorCode" : null,
+  "dependency" : {
+    "autoGatingProfile" : null,
+    "contrastProfile" : false,
+    "gsiProfile" : null,
+    "autoVoiceProfile" : null,
+    "reformatProfile" : null,
+    "injectorProfiles" : null,
+    "requestedProcedures" : [ {
+      "value" : "CT CERVICAL SPINE WO CONTRAST"
+    } ],
+    "kvAssistProfiles" : null,
+    "autoVoices" : null,
+    "revolutionAutoVoiceProfile" : null,
+    "revolutionReformatProfile" : null,
+    "networkSettingProfile" : {
+      "profileKey" : "NW_aebb71ae-89f1-4fc8-924e-242dcf155158",
+      "checksum" : "2381c0e8a4c047e0ff2c2701e5d0ba3dea224ad0d0951f1007674aa16bc360a7",
+      "version" : null,
+      "fileName" : "/protomgmt/ProtocolData/8ec6d1c0_6bde_4cc3_81e1_6e846414300c/NetworkSetting/NW_aebb71ae-89f1-4fc8-924e-242dcf155158.json",
+      "structureChecksum" : "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "ipmSoftwareVersion" : null,
+  "options" : [ "3D Dose Modulation", "Smart MAR" ],
+  "uuid" : "aebb71ae-89f1-4fc8-924e-242dcf155158",
+  "checksum" : null,
+  "lastUpdatedDateTime" : "2026-07-15T09:31:53.000-0400",
+  "systemId" : null,
+  "fileName" : null,
+  "favorite" : false,
+  "networkSettingChecksum" : "2381c0e8a4c047e0ff2c2701e5d0ba3dea224ad0d0951f1007674aa16bc360a7",
+  "softwareVersion" : null,
+  "metaAttributes" : { },
+  "conflicts" : [ ],
+  "parameters" : { }
+}
