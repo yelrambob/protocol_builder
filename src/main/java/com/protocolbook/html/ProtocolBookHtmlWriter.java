@@ -75,8 +75,20 @@ public class ProtocolBookHtmlWriter {
             if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(esc(s.getContrast().getFlowRate())).append(" mL/s");
             html.append("</p>\n");
         }
-        for (Group g : s.getGroups()) appendGroup(html, g);
+        if (isScout(s)) appendScoutSummary(html, s);
+        else for (Group g : s.getGroups()) appendGroup(html, g);
         html.append("</div>\n");
+    }
+
+    private boolean isScout(Series s) {
+        return s.getScanType() != null && s.getScanType().equalsIgnoreCase("Scout");
+    }
+
+    // Scouts are localizer images, not diagnostic reconstructions - one line per plane beats a full table per group.
+    private void appendScoutSummary(StringBuilder html, Series s) {
+        List<String> planes = new ArrayList<>();
+        for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) planes.add(r.getPlane() != null ? r.getPlane() + "°" : "?");
+        html.append("<p class=\"acquisition\">Scout planes: ").append(esc(String.join(", ", planes))).append("</p>\n");
     }
 
     private void appendGroup(StringBuilder html, Group g) {
@@ -88,7 +100,7 @@ public class ProtocolBookHtmlWriter {
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
-            html.append("<tr><td>").append(esc(r.getName())).append(r.isDerived() ? " <em>(reformat)</em>" : "")
+            html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(esc(r.getName()))
                     .append("</td><td>").append(esc(r.getThickness()))
                     .append("</td><td>").append(esc(r.getInterval())).append("</td><td>").append(esc(r.getKernel())).append("</td></tr>\n");
         }
@@ -147,5 +159,6 @@ public class ProtocolBookHtmlWriter {
             ".notes{background:#fff8e1;border:1px solid #e0c060;border-radius:4px;padding:.5rem;margin:.5rem 0;}" +
             ".series{margin:.75rem 0 .75rem 1rem;}" +
             "table.recons{border-collapse:collapse;margin:.25rem 0 .75rem;}" +
-            "table.recons th,table.recons td{border:1px solid #ddd;padding:.25rem .5rem;font-size:.9rem;text-align:left;}";
+            "table.recons th,table.recons td{border:1px solid #ddd;padding:.25rem .5rem;font-size:.9rem;text-align:left;}" +
+            "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:#555;}";
 }

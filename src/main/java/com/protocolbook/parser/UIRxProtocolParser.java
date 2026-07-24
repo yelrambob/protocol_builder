@@ -111,8 +111,8 @@ public class UIRxProtocolParser {
         rec.setName(name);
         rec.setDerived(true);
         rec.setPlane(derivePlane(name));
-        rec.setThickness(vals.remove("thickness"));
-        rec.setInterval(vals.remove("spacing"));
+        rec.setThickness(ParseSupport.roundToStep(vals.remove("thickness"), 0.625));
+        rec.setInterval(ParseSupport.roundToStep(vals.remove("spacing"), 0.625));
         rec.setDfov(vals.remove("fieldOfView"));
         rec.setWindowLevel(vals.remove("windowLevel"));
         rec.setWindowWidth(vals.remove("windowWidth"));
@@ -223,8 +223,8 @@ public class UIRxProtocolParser {
         String shortLabel = vals.remove("seriesDescriptionRecon");
         rec.setName(displayName != null ? displayName : shortLabel);
         rec.setKernel(vals.remove("reconKernel"));
-        rec.setThickness(vals.remove("reconImageThickness"));
-        rec.setInterval(vals.remove("reconInterval"));
+        rec.setThickness(ParseSupport.roundToStep(vals.remove("reconImageThickness"), 0.625));
+        rec.setInterval(ParseSupport.roundToStep(vals.remove("reconInterval"), 0.625));
         rec.setPlane(plane);
         rec.setMatrix(vals.remove("reconMatrix"));
         rec.setDfov(vals.remove("displayFieldOfView"));
