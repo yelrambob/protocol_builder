@@ -1,9 +1,10 @@
 @echo off
 setlocal
 
-rem One-time setup: creates protocol-overrides.json with one empty entry per
-rem protocol found, ready for you to fill in scanning notes or set "excluded": true.
-rem Fails if protocol-overrides.json already exists, so it won't overwrite your notes.
+rem Creates/updates protocol-overrides.json with one empty entry per protocol
+rem found, ready for you to fill in scanning notes or set "excluded": true.
+rem Safe to re-run any time (e.g. after new protocols show up on the scanner) -
+rem it only adds new protocol numbers and never touches existing notes.
 rem
 rem Usage:
 rem   init-protocol-overrides.bat
