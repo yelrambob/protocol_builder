@@ -211,7 +211,12 @@ public class UIRxProtocolParser {
             Reconstruction rec = parseRecon(reconEls.get(ri), plane, sessionInfo.names.get(key), p, si, gi, ri);
             group.getReconstructions().add(rec);
             List<Reconstruction> reformats = sessionInfo.reformats.get(key);
-            if (reformats != null) group.getReconstructions().addAll(reformats);
+            if (reformats != null) {
+                // MPR reformats (coronal/sagittal) are reconstructed from this recon's images, so they share its kernel -
+                // session.xml's CTDMPRData block doesn't carry one of its own.
+                for (Reconstruction reformat : reformats) reformat.setKernel(rec.getKernel());
+                group.getReconstructions().addAll(reformats);
+            }
         }
         remainder(p, "series[" + si + "].group[" + gi + "]", vals);
         return group;

@@ -1,5 +1,6 @@
 package com.protocolbook.html;
 
+import com.protocolbook.labels.LabelConfig;
 import com.protocolbook.model.*;
 import com.protocolbook.overrides.ProtocolOverride;
 
@@ -18,7 +19,7 @@ import java.util.*;
  */
 public class ProtocolBookHtmlWriter {
 
-    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, File outFile) throws IOException {
+    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, File outFile) throws IOException {
         Map<Integer, List<Protocol>> groups = new TreeMap<Integer, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
@@ -32,7 +33,7 @@ public class ProtocolBookHtmlWriter {
         for (Map.Entry<Integer, List<Protocol>> group : groups.entrySet()) {
             html.append("<details class=\"group\" open>\n<summary>").append(esc(groupLabel(group.getKey(), group.getValue())))
                     .append(" (").append(group.getValue().size()).append(")</summary>\n");
-            for (Protocol p : group.getValue()) appendProtocol(html, p, overrides);
+            for (Protocol p : group.getValue()) appendProtocol(html, p, overrides, labels);
             html.append("</details>\n");
         }
         html.append("</body>\n</html>\n");
@@ -42,7 +43,7 @@ public class ProtocolBookHtmlWriter {
         return outFile;
     }
 
-    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides) {
+    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         html.append("<div class=\"protocol\">\n<h2>").append(esc(number)).append(" &mdash; ").append(esc(m == null ? null : m.getName())).append("</h2>\n");
@@ -59,7 +60,7 @@ public class ProtocolBookHtmlWriter {
                     .append(esc(p.getDose().getDlp())).append(" mGy&middot;cm</p>\n");
         }
 
-        for (Series s : p.getSeries()) appendSeries(html, s);
+        for (Series s : p.getSeries()) appendSeries(html, s, labels);
 
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(esc(String.join("; ", p.getNotes()))).append("</p>\n");
@@ -67,7 +68,7 @@ public class ProtocolBookHtmlWriter {
         html.append("</div>\n");
     }
 
-    private void appendSeries(StringBuilder html, Series s) {
+    private void appendSeries(StringBuilder html, Series s, LabelConfig labels) {
         html.append("<div class=\"series\"><h3>Series ").append(s.getNumber()).append(" &mdash; ")
                 .append(esc(s.getScanType())).append(esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         if (s.getContrast() != null && s.getContrast().isIv()) {
@@ -75,8 +76,8 @@ public class ProtocolBookHtmlWriter {
             if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(esc(s.getContrast().getFlowRate())).append(" mL/s");
             html.append("</p>\n");
         }
-        if (isScout(s)) appendScoutSummary(html, s);
-        else for (Group g : s.getGroups()) appendGroup(html, g);
+        if (isScout(s)) appendScoutTable(html, s, labels);
+        else for (Group g : s.getGroups()) appendGroup(html, g, labels);
         html.append("</div>\n");
     }
 
@@ -84,14 +85,19 @@ public class ProtocolBookHtmlWriter {
         return s.getScanType() != null && s.getScanType().equalsIgnoreCase("Scout");
     }
 
-    // Scouts are localizer images, not diagnostic reconstructions - one line per plane beats a full table per group.
-    private void appendScoutSummary(StringBuilder html, Series s) {
-        List<String> planes = new ArrayList<>();
-        for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) planes.add(r.getPlane() != null ? r.getPlane() + "°" : "?");
-        html.append("<p class=\"acquisition\">Scout planes: ").append(esc(String.join(", ", planes))).append("</p>\n");
+    // Scouts are localizer images, not diagnostic reconstructions - one compact table beats a full acquisition block per plane.
+    private void appendScoutTable(StringBuilder html, Series s, LabelConfig labels) {
+        html.append("<table class=\"recons\">\n<tr><th>Plane</th><th>kV</th><th>mA</th></tr>\n");
+        for (Group g : s.getGroups()) {
+            Acquisition a = g.getAcquisition();
+            String plane = g.getReconstructions().isEmpty() ? null : g.getReconstructions().get(0).getPlane();
+            html.append("<tr><td>").append(esc(labels.plane(plane))).append("</td><td>").append(esc(a.getKv()))
+                    .append("</td><td>").append(esc(a.getMa())).append("</td></tr>\n");
+        }
+        html.append("</table>\n");
     }
 
-    private void appendGroup(StringBuilder html, Group g) {
+    private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
         Acquisition a = g.getAcquisition();
         html.append("<p class=\"acquisition\">").append(esc(a.getKv())).append(" kV &middot; ")
                 .append(esc(a.getMa() != null ? a.getMa() : a.getMinMa() + "-" + a.getMaxMa())).append(" mA");
@@ -102,7 +108,7 @@ public class ProtocolBookHtmlWriter {
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(esc(r.getName()))
                     .append("</td><td>").append(esc(r.getThickness()))
-                    .append("</td><td>").append(esc(r.getInterval())).append("</td><td>").append(esc(r.getKernel())).append("</td></tr>\n");
+                    .append("</td><td>").append(esc(r.getInterval())).append("</td><td>").append(esc(labels.kernel(r.getKernel()))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
