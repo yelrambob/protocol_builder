@@ -37,14 +37,14 @@ public class UIRxProtocolParser {
         p.setDose(new Dose());
 
         applyMetadataJson(metaFile, p);
-        Map<String, String> reconNames = Collections.emptyMap();
+        ReconSessionInfo sessionInfo = new ReconSessionInfo();
         List<String> seriesScanTypes = Collections.emptyList();
         if (sessionFile.isFile()) {
             Document sessionDoc = parseXml(sessionFile);
-            reconNames = readReconDisplayNames(sessionDoc);
+            sessionInfo = readReconSessionInfo(sessionDoc);
             seriesScanTypes = readSeriesScanTypes(sessionDoc);
         }
-        parseUirx(uirxFile, p, reconNames, seriesScanTypes);
+        parseUirx(uirxFile, p, sessionInfo, seriesScanTypes);
         return p;
     }
 
@@ -57,25 +57,76 @@ public class UIRxProtocolParser {
         m.setBodyPart(json.optString("anatomyRegion", null));
         m.setLibrary(json.optString("library", null));
         m.setUuid(json.optString("uuid", null));
+        m.setLastUpdated(json.optString("lastUpdatedDateTime", null));
     }
 
-    // series[i].group[j].recon[k] -> friendly display name pulled from session.xml's CTReconTask DESCRIPTION
-    private Map<String, String> readReconDisplayNames(Document doc) {
-        Map<String, String> out = new HashMap<String, String>();
+    /** Per series[i].group[j].recon[k]: the friendly display name, and any reformatted views (coronal/sagittal/etc.)
+     *  derived from it. Both only exist in session.xml - UIRx.xml has neither. */
+    private static final class ReconSessionInfo {
+        final Map<String, String> names = new HashMap<String, String>();
+        final Map<String, List<Reconstruction>> reformats = new HashMap<String, List<Reconstruction>>();
+    }
+
+    private ReconSessionInfo readReconSessionInfo(Document doc) {
+        ReconSessionInfo info = new ReconSessionInfo();
         for (Element task : descendants(doc.getDocumentElement(), "task")) {
-            String type = task.getAttribute("type");
-            if (type == null || !type.contains("ReconTask")) continue;
+            if (!task.getAttribute("type").contains("ReconTask")) continue;
             String description = null, path = null;
             for (Element prop : children(task, "property")) {
                 String name = prop.getAttribute("name");
                 if ("DESCRIPTION".equals(name)) description = prop.getAttribute("value");
                 else if ("SELECTED_GROUP_PATHS".equals(name)) path = prop.getAttribute("value");
             }
-            if (description == null || description.isEmpty() || path == null) continue;
+            if (path == null) continue;
             Matcher matcher = GROUP_PATH.matcher(path);
-            if (matcher.find()) out.put(matcher.group(1) + "." + matcher.group(2) + "." + matcher.group(3), description);
+            if (!matcher.find()) continue;
+            String key = matcher.group(1) + "." + matcher.group(2) + "." + matcher.group(3);
+            if (description != null && !description.isEmpty()) info.names.put(key, description);
+
+            List<Reconstruction> reformats = new ArrayList<Reconstruction>();
+            for (Element child : children(task, "task")) {
+                if (!child.getAttribute("type").contains("CTReformatTask")) continue;
+                Reconstruction reformat = buildReformat(child);
+                if (reformat != null) reformats.add(reformat);
+            }
+            if (!reformats.isEmpty()) info.reformats.put(key, reformats);
         }
-        return out;
+        return info;
+    }
+
+    // session.xml's "Processed Images" (CTReformatTask) holds a CTDMPRData block describing one
+    // reformatted view (typically coronal/sagittal) generated from the parent axial recon.
+    private Reconstruction buildReformat(Element reformatTask) {
+        String description = null;
+        for (Element prop : children(reformatTask, "property")) if ("DESCRIPTION".equals(prop.getAttribute("name"))) description = prop.getAttribute("value");
+        Map<String, String> vals = new LinkedHashMap<String, String>();
+        for (Element data : children(reformatTask, "data")) if (data.getAttribute("type").contains("CTDMPRData")) vals = properties(data);
+        if (vals.isEmpty()) return null;
+
+        String name = description != null && !description.isEmpty() ? description : vals.get("seriesDescription");
+        vals.remove("seriesDescription");
+        if (name == null || name.isEmpty()) return null;
+
+        Reconstruction rec = new Reconstruction();
+        rec.setName(name);
+        rec.setDerived(true);
+        rec.setPlane(derivePlane(name));
+        rec.setThickness(ParseSupport.roundToStep(vals.remove("thickness"), 0.625));
+        rec.setInterval(ParseSupport.roundToStep(vals.remove("spacing"), 0.625));
+        rec.setDfov(vals.remove("fieldOfView"));
+        rec.setWindowLevel(vals.remove("windowLevel"));
+        rec.setWindowWidth(vals.remove("windowWidth"));
+        rec.setMatrix(vals.remove("matrixSize"));
+        return rec;
+    }
+
+    private String derivePlane(String name) {
+        String n = name.toUpperCase(Locale.ROOT);
+        if (n.contains("CORONAL")) return "Coronal";
+        if (n.contains("SAGITTAL")) return "Sagittal";
+        if (n.contains("AXIAL")) return "Axial";
+        if (n.contains("OBLIQUE")) return "Oblique";
+        return null;
     }
 
     // CTSeriesTask elements appear in the same document order as jrx:series, so position i pairs with series[i]
@@ -90,7 +141,7 @@ public class UIRxProtocolParser {
         return out;
     }
 
-    private void parseUirx(File uirxFile, Protocol p, Map<String, String> reconNames, List<String> seriesScanTypes) throws Exception {
+    private void parseUirx(File uirxFile, Protocol p, ReconSessionInfo sessionInfo, List<String> seriesScanTypes) throws Exception {
         Document doc = parseXml(uirxFile);
         Element examEl = children(doc.getDocumentElement(), "exam").get(0);
         Map<String, String> examVals = ulements(examEl);
@@ -115,11 +166,11 @@ public class UIRxProtocolParser {
         List<Element> seriesEls = children(protoEl, "series");
         for (int si = 0; si < seriesEls.size(); si++) {
             String scanType = si < seriesScanTypes.size() ? seriesScanTypes.get(si) : null;
-            p.getSeries().add(parseSeries(seriesEls.get(si), si, reconNames, scanType, p));
+            p.getSeries().add(parseSeries(seriesEls.get(si), si, sessionInfo, scanType, p));
         }
     }
 
-    private Series parseSeries(Element seriesEl, int si, Map<String, String> reconNames, String scanType, Protocol p) {
+    private Series parseSeries(Element seriesEl, int si, ReconSessionInfo sessionInfo, String scanType, Protocol p) {
         Series series = new Series();
         series.setNumber(si + 1);
         series.setScanType(scanType);
@@ -129,7 +180,7 @@ public class UIRxProtocolParser {
         remainder(p, "series[" + si + "]", vals);
 
         List<Element> groupEls = children(seriesEl, "group");
-        for (int gi = 0; gi < groupEls.size(); gi++) series.getGroups().add(parseGroup(groupEls.get(gi), si, gi, reconNames, p));
+        for (int gi = 0; gi < groupEls.size(); gi++) series.getGroups().add(parseGroup(groupEls.get(gi), si, gi, sessionInfo, p));
         for (Element injectorEl : children(seriesEl, "injector")) applyInjector(injectorEl, series, p, si);
 
         if (series.getName() == null && !series.getGroups().isEmpty() && !series.getGroups().get(0).getReconstructions().isEmpty())
@@ -137,7 +188,7 @@ public class UIRxProtocolParser {
         return series;
     }
 
-    private Group parseGroup(Element groupEl, int si, int gi, Map<String, String> reconNames, Protocol p) {
+    private Group parseGroup(Element groupEl, int si, int gi, ReconSessionInfo sessionInfo, Protocol p) {
         Group group = new Group();
         Map<String, String> vals = ulements(groupEl);
         Acquisition a = group.getAcquisition();
@@ -145,6 +196,7 @@ public class UIRxProtocolParser {
         a.setMa(vals.remove("milliAmps"));
         a.setMinMa(vals.remove("milliAmpsMin"));
         a.setMaxMa(vals.remove("milliAmpsMax"));
+        a.setMaMode(vals.remove("milliAmpsMode"));
         a.setNoiseIndex(vals.remove("referenceNoiseIndex"));
         a.setPitch(vals.remove("pitch"));
         a.setRotationTime(vals.remove("rotationTime"));
@@ -156,8 +208,16 @@ public class UIRxProtocolParser {
 
         List<Element> reconEls = children(groupEl, "recon");
         for (int ri = 0; ri < reconEls.size(); ri++) {
-            Reconstruction rec = parseRecon(reconEls.get(ri), plane, reconNames.get(si + "." + gi + "." + ri), p, si, gi, ri);
+            String key = si + "." + gi + "." + ri;
+            Reconstruction rec = parseRecon(reconEls.get(ri), plane, sessionInfo.names.get(key), p, si, gi, ri);
             group.getReconstructions().add(rec);
+            List<Reconstruction> reformats = sessionInfo.reformats.get(key);
+            if (reformats != null) {
+                // MPR reformats (coronal/sagittal) are reconstructed from this recon's images, so they share its kernel -
+                // session.xml's CTDMPRData block doesn't carry one of its own.
+                for (Reconstruction reformat : reformats) reformat.setKernel(rec.getKernel());
+                group.getReconstructions().addAll(reformats);
+            }
         }
         remainder(p, "series[" + si + "].group[" + gi + "]", vals);
         return group;
@@ -169,8 +229,8 @@ public class UIRxProtocolParser {
         String shortLabel = vals.remove("seriesDescriptionRecon");
         rec.setName(displayName != null ? displayName : shortLabel);
         rec.setKernel(vals.remove("reconKernel"));
-        rec.setThickness(vals.remove("reconImageThickness"));
-        rec.setInterval(vals.remove("reconInterval"));
+        rec.setThickness(ParseSupport.roundToStep(vals.remove("reconImageThickness"), 0.625));
+        rec.setInterval(ParseSupport.roundToStep(vals.remove("reconInterval"), 0.625));
         rec.setPlane(plane);
         rec.setMatrix(vals.remove("reconMatrix"));
         rec.setDfov(vals.remove("displayFieldOfView"));
@@ -258,6 +318,12 @@ public class UIRxProtocolParser {
     private static Map<String, String> ulements(Element parent) {
         Map<String, String> m = new LinkedHashMap<String, String>();
         for (Element e : children(parent, "ulement")) m.put(e.getAttribute("name"), e.getAttribute("value"));
+        return m;
+    }
+
+    private static Map<String, String> properties(Element parent) {
+        Map<String, String> m = new LinkedHashMap<String, String>();
+        for (Element e : children(parent, "property")) m.put(e.getAttribute("name"), e.getAttribute("value"));
         return m;
     }
 }

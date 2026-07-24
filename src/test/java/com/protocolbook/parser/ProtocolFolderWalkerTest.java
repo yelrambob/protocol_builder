@@ -41,14 +41,31 @@ class ProtocolFolderWalkerTest {
         assertEquals("Axial", axial.getScanType());
         assertEquals(1, axial.getGroups().size());
         Group group = axial.getGroups().get(0);
-        assertEquals(4, group.getReconstructions().size());
+        // 4 primary axial recons (2.5mm, 0.625mm, MAR 2.5mm, MAR 0.625mm) + 4 reformats
+        // (coronal+sagittal off the 0.625mm recon, coronal+sagittal off the MAR 0.625mm recon)
+        assertEquals(8, group.getReconstructions().size());
         assertEquals(1.45, group.getDose().getCtdi());
         assertEquals(34.84, group.getDose().getDlp());
         assertEquals(140, Integer.parseInt(group.getAcquisition().getKv()));
+        // SmartmA is active here (milliAmpsMode present): the flat "milliAmps" is a stale fallback
+        // value the console keeps around, minMa/maxMa is the real setting
+        assertNotNull(group.getAcquisition().getMaMode());
+        assertEquals("100", group.getAcquisition().getMinMa());
+        assertEquals("635", group.getAcquisition().getMaxMa());
 
         Reconstruction primaryRecon = group.getReconstructions().get(0);
         assertEquals("AXIAL KNEE DET 2.5MM", primaryRecon.getName(), "display name should come from session.xml, joined via SELECTED_GROUP_PATHS");
         assertEquals("2.5", primaryRecon.getThickness());
+        assertFalse(primaryRecon.isDerived());
+
+        List<String> reconNames = new java.util.ArrayList<>();
+        for (Reconstruction r : group.getReconstructions()) reconNames.add(r.getName());
+        assertTrue(reconNames.contains("CORONAL KNEE DET 2.5MM"), "reformatted coronal recon should be pulled in from session.xml");
+        assertTrue(reconNames.contains("SAGITTAL KNEE DET MAR 2.5MM"), "reformatted sagittal recon should be pulled in from session.xml");
+
+        Reconstruction coronal = group.getReconstructions().stream().filter(r -> "CORONAL KNEE DET 2.5MM".equals(r.getName())).findFirst().orElseThrow();
+        assertTrue(coronal.isDerived());
+        assertEquals("Coronal", coronal.getPlane());
 
         assertEquals("100", axial.getContrast().getIvVolume());
         assertTrue(axial.getContrast().isIv());

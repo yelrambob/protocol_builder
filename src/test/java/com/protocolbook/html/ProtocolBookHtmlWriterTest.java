@@ -1,5 +1,6 @@
 package com.protocolbook.html;
 
+import com.protocolbook.labels.LabelConfig;
 import com.protocolbook.model.Protocol;
 import com.protocolbook.overrides.ProtocolOverride;
 import com.protocolbook.parser.ProtocolFolderWalker;
@@ -32,7 +33,8 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", kneeNotes); // "CT LWR EXT KNEE WITH CONTRAST"
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, overrides, out);
+        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>());
+        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // two different protocols share this name (9.4 lower-extremities and 8.2 pelvis); only 9.4 is excluded
@@ -46,5 +48,38 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(lower.contains("pelvis"));
         long groupCount = html.lines().filter(l -> l.contains("class=\"group\"")).count();
         assertEquals(5, groupCount);
+    }
+
+    @Test void scoutsRenderAsOneTableWithPlaneLabelsAndKernelsAreMapped(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+
+        Map<String, String> kernelLabels = new HashMap<>();
+        kernelLabels.put("8", "STD");
+
+        File out = tempDir.resolve("book.html").toFile();
+        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>()); // default plane labels apply
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mA</th>"), "scout series should render as a single Plane/kV/mA table");
+        assertTrue(html.contains(">AP<") || html.contains(">Lateral<"), "scout plane codes should map to AP/Lateral/PA via the default convention");
+        assertFalse(html.contains("Scout planes:"), "scouts should no longer render as a plain summary line");
+        assertTrue(html.contains(">STD<"), "kernel code 8 should map to STD via the supplied kernel-labels");
+
+        // reformats inherit their parent recon's kernel (session.xml's CTDMPRData has no kernel of its own)
+        int coronalRow = html.indexOf("CORONAL KNEE DET 2.5MM");
+        assertTrue(coronalRow > 0);
+        assertTrue(html.substring(coronalRow, coronalRow + 200).contains(">STD<"), "reformat row should show the inherited/mapped kernel");
+    }
+
+    @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>()), out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
+        // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
+        assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
     }
 }

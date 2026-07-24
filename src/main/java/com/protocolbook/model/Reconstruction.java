@@ -3,6 +3,7 @@ public class Reconstruction {
     private String name, kernel, thickness, interval, plane, matrix, dfov;
     private String windowLevel, windowWidth, iterativeConfig, startLocation, endLocation;
     private Integer numberOfImages;
+    private boolean derived;
     public String getName(){return name;} public void setName(String v){name=v;}
     public String getKernel(){return kernel;} public void setKernel(String v){kernel=v;}
     public String getThickness(){return thickness;} public void setThickness(String v){thickness=v;}
@@ -16,4 +17,5 @@ public class Reconstruction {
     public String getStartLocation(){return startLocation;} public void setStartLocation(String v){startLocation=v;}
     public String getEndLocation(){return endLocation;} public void setEndLocation(String v){endLocation=v;}
     public Integer getNumberOfImages(){return numberOfImages;} public void setNumberOfImages(Integer v){numberOfImages=v;}
+    public boolean isDerived(){return derived;} public void setDerived(boolean v){derived=v;}
 }

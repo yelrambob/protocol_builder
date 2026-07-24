@@ -53,7 +53,7 @@ public class ProtocolJsonWriter {
         put(j, "patientType", m.getPatientType()); put(j, "bodyPart", m.getBodyPart());
         put(j, "category", m.getCategory()); put(j, "version", m.getVersion());
         put(j, "scanner", m.getScanner()); put(j, "clinicalIndication", m.getClinicalIndication());
-        put(j, "library", m.getLibrary()); put(j, "uuid", m.getUuid());
+        put(j, "library", m.getLibrary()); put(j, "uuid", m.getUuid()); put(j, "lastUpdated", m.getLastUpdated());
         return j;
     }
 
@@ -110,7 +110,8 @@ public class ProtocolJsonWriter {
         JSONObject j = new JSONObject();
         if (a == null) return j;
         put(j, "kv", a.getKv()); put(j, "ma", a.getMa()); put(j, "minMa", a.getMinMa()); put(j, "maxMa", a.getMaxMa());
-        put(j, "noiseIndex", a.getNoiseIndex()); put(j, "rotationTime", a.getRotationTime()); put(j, "pitch", a.getPitch());
+        put(j, "noiseIndex", a.getNoiseIndex()); put(j, "maMode", a.getMaMode());
+        put(j, "rotationTime", a.getRotationTime()); put(j, "pitch", a.getPitch());
         put(j, "detector", a.getDetector()); put(j, "sliceThickness", a.getSliceThickness()); put(j, "interval", a.getInterval());
         put(j, "fieldOfView", a.getFieldOfView()); put(j, "matrix", a.getMatrix());
         return j;
@@ -123,6 +124,7 @@ public class ProtocolJsonWriter {
         put(j, "dfov", r.getDfov()); put(j, "windowLevel", r.getWindowLevel()); put(j, "windowWidth", r.getWindowWidth());
         put(j, "iterativeConfig", r.getIterativeConfig()); put(j, "startLocation", r.getStartLocation());
         put(j, "endLocation", r.getEndLocation()); put(j, "numberOfImages", r.getNumberOfImages());
+        j.put("derived", r.isDerived());
         return j;
     }
 

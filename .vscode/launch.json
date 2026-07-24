@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Run protocol book",
+      "request": "launch",
+      "mainClass": "com.protocolbook.Main",
+      "projectName": "protocol-builder",
+      "args": [
+        "protocol data",
+        "--html",
+        "book.html",
+        "--init-overrides"
+      ]
+    },
+    {
+      "type": "java",
+      "name": "Run protocol book (existing overrides)",
+      "request": "launch",
+      "mainClass": "com.protocolbook.Main",
+      "projectName": "protocol-builder",
+      "args": [
+        "protocol data",
+        "--html",
+        "book.html",
+        "--overrides",
+        "protocol-overrides.json"
+      ]
+    }
+  ]
+}
