@@ -91,7 +91,7 @@ public class GEWorkbookParser implements ProtocolParser {
                 else if (k.contains("recon")) { rec.setName(v); hasRec=true; }
                 else advanced(p, sheet.getSheetName()+"!"+row.getCell(h.getKey()).getAddress()+" "+text(header.getCell(h.getKey())), v);
             }
-            if (hasRec) { p.getReconstructions().add(rec); series.getReconstructions().add(rec); }
+            if (hasRec) { p.getReconstructions().add(rec); Group group = new Group(); group.getReconstructions().add(rec); series.getGroups().add(group); }
             if (hasSeries) p.getSeries().add(series);
         }
         return last;
@@ -119,13 +119,13 @@ public class GEWorkbookParser implements ProtocolParser {
         else advanced(p, location + " " + raw, v);
     }
 
-    private void advanced(Protocol p,String key,String value){String k=key; int i=2; while(p.getAdvanced().containsKey(k))k=key+" ("+(i++)+")"; p.getAdvanced().put(k,value);}
+    private void advanced(Protocol p,String key,String value){ParseSupport.putAdvanced(p,key,value);}
     private String text(Cell c){if(c==null)return ""; try{return formatter.formatCellValue(c,evaluator[0]).trim();}catch(RuntimeException e){return formatter.formatCellValue(c).trim();}}
     private String joinValues(List<Cell> c,int from){StringBuilder b=new StringBuilder(); for(int i=from;i<c.size();i++){String v=text(c.get(i));if(!v.isEmpty()){if(b.length()>0)b.append(" | ");b.append(v);}}return b.toString();}
     private String norm(String s){return s==null?"":s.toLowerCase(Locale.ROOT).replace('\u00a0',' ').replaceAll("\\s+"," ").trim();}
     private boolean contains(String k,String... terms){for(String t:terms)if(k.contains(norm(t)))return true;return false;}
     private boolean matches(String k,String... terms){for(String t:terms)if(k.equals(norm(t)))return true;return false;}
     private boolean yes(String s){String v=norm(s);return v.equals("yes")||v.equals("y")||v.equals("true")||v.equals("1")||v.contains("required");}
-    private Double decimal(String s,Protocol p,String field){try{return Double.valueOf(s.replaceAll("[^0-9.+-]",""));}catch(Exception e){p.getNotes().add("Could not parse numeric "+field+": "+s);return null;}}
-    private int integer(String s,Protocol p,String field){try{return (int)Double.parseDouble(s.replaceAll("[^0-9.+-]",""));}catch(Exception e){p.getNotes().add("Could not parse "+field+": "+s);return 0;}}
+    private Double decimal(String s,Protocol p,String field){return ParseSupport.decimal(s,p,field);}
+    private int integer(String s,Protocol p,String field){Integer v=ParseSupport.integer(s,p,field); return v==null?0:v;}
 }

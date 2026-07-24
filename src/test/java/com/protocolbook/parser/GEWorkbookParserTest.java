@@ -29,6 +29,8 @@ class GEWorkbookParserTest {
         assertEquals(1, result.size()); Protocol p = result.get(0);
         assertEquals("Chest CTA", p.getMetadata().getName()); assertEquals("120", p.getAcquisition().getKv());
         assertEquals(8.5, p.getDose().getCtdi()); assertEquals(1, p.getSeries().size()); assertEquals(1, p.getReconstructions().size());
+        assertEquals(1, p.getSeries().get(0).getGroups().size());
+        assertEquals("STANDARD", p.getSeries().get(0).getGroups().get(0).getReconstructions().get(0).getKernel());
         assertTrue(p.getNotes().get(0).contains("Check IV access"));
         assertTrue(p.getAdvanced().values().contains("On"));
     }
