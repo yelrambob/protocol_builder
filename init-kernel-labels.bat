@@ -8,7 +8,8 @@ rem the export itself. Safe to re-run any time; only adds new codes.
 rem
 rem Usage:
 rem   init-kernel-labels.bat
-rem       Uses the sample data checked into this repo ("protocol data").
+rem       Uses the "protocol data" folder in this repo (not tracked by git -
+rem       put your real exported protocol folders there).
 rem   init-kernel-labels.bat "C:\path\to\ProtocolData"
 rem   Or drag-and-drop your ProtocolData folder onto this .bat file in Explorer.
 

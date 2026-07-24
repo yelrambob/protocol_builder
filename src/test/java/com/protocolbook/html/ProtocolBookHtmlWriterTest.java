@@ -18,7 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ProtocolBookHtmlWriterTest {
-    private static final File FIXTURE_ROOT = new File("protocol data");
+    private static final File FIXTURE_ROOT = new File("src/test/resources/sample-protocols");
 
     @Test void groupsExcludesAndAppliesManualNotes(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);

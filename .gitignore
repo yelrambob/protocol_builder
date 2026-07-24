@@ -5,3 +5,8 @@ out/
 *.class
 .idea/
 *.iml
+
+# Your real exported protocol folders go here by default (see run-protocol-book.bat) -
+# never committed. The checked-in sample fixtures live in src/test/resources/sample-protocols.
+/protocol data/
+book.html
