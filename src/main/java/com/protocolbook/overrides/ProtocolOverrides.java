@@ -18,7 +18,8 @@ import java.util.Map;
  * File format:
  * {
  *   "9.2": { "notes": "Have the patient bend the knee slightly for..." },
- *   "9.4": { "excluded": true }
+ *   "9.4": { "excluded": true },
+ *   "5.1": { "sendDestination": "AHSPACS + 3D Lab" }
  * }
  */
 public final class ProtocolOverrides {
@@ -33,6 +34,7 @@ public final class ProtocolOverrides {
             ProtocolOverride o = new ProtocolOverride();
             o.setNotes(entry.optString("notes", null));
             o.setExcluded(entry.optBoolean("excluded", false));
+            o.setSendDestination(entry.optString("sendDestination", null));
             out.put(key, o);
         }
         return out;
@@ -48,12 +50,13 @@ public final class ProtocolOverrides {
         JSONObject json = new JSONObject();
         for (Map.Entry<String, ProtocolOverride> e : existing.entrySet()) {
             ProtocolOverride o = e.getValue();
-            json.put(e.getKey(), new JSONObject().put("notes", o.getNotes() == null ? "" : o.getNotes()).put("excluded", o.isExcluded()));
+            json.put(e.getKey(), new JSONObject().put("notes", o.getNotes() == null ? "" : o.getNotes()).put("excluded", o.isExcluded())
+                    .put("sendDestination", o.getSendDestination() == null ? "" : o.getSendDestination()));
         }
         int added = 0;
         for (String number : protocolNumbers) {
             if (number == null || json.has(number)) continue;
-            json.put(number, new JSONObject().put("notes", "").put("excluded", false));
+            json.put(number, new JSONObject().put("notes", "").put("excluded", false).put("sendDestination", ""));
             added++;
         }
         try (FileWriter w = new FileWriter(file)) { w.write(json.toString(2)); }

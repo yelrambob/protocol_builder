@@ -33,7 +33,7 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", kneeNotes); // "CT LWR EXT KNEE WITH CONTRAST"
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>());
+        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>());
         new ProtocolBookHtmlWriter().write(protocols, overrides, labels, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -57,7 +57,7 @@ class ProtocolBookHtmlWriterTest {
         kernelLabels.put("8", "STD");
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>()); // default plane labels apply
+        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -75,7 +75,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>()), out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a

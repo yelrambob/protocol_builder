@@ -23,17 +23,19 @@ public class LabelConfig {
 
     private final Map<String, String> kernelLabels;
     private final Map<String, String> planeLabels;
+    private final Map<String, String> detectorLabels;
 
-    public LabelConfig(Map<String, String> kernelLabels, Map<String, String> planeOverrides) {
+    public LabelConfig(Map<String, String> kernelLabels, Map<String, String> planeOverrides, Map<String, String> detectorLabels) {
         this.kernelLabels = kernelLabels != null ? kernelLabels : new HashMap<String, String>();
+        this.detectorLabels = detectorLabels != null ? detectorLabels : new HashMap<String, String>();
         this.planeLabels = new HashMap<String, String>(DEFAULT_PLANE_LABELS);
         if (planeOverrides != null)
             for (Map.Entry<String, String> e : planeOverrides.entrySet())
                 if (e.getValue() != null && !e.getValue().isEmpty()) this.planeLabels.put(e.getKey(), e.getValue());
     }
 
-    public static LabelConfig load(File kernelLabelsFile, File planeLabelsFile) throws IOException {
-        return new LabelConfig(CodeLabels.load(kernelLabelsFile), CodeLabels.load(planeLabelsFile));
+    public static LabelConfig load(File kernelLabelsFile, File planeLabelsFile, File detectorLabelsFile) throws IOException {
+        return new LabelConfig(CodeLabels.load(kernelLabelsFile), CodeLabels.load(planeLabelsFile), CodeLabels.load(detectorLabelsFile));
     }
 
     public String kernel(String code) {
@@ -46,5 +48,13 @@ public class LabelConfig {
         if (code == null) return null;
         String label = planeLabels.get(code);
         return label != null && !label.isEmpty() ? label : code + "°";
+    }
+
+    // Detector row count (GE's "macroRowNumber") - site-specific mapping to slice/collimation
+    // labels like "128 slice/80mm", same reasoning as kernel(): must come from detector-labels.json.
+    public String detector(String code) {
+        if (code == null) return null;
+        String label = detectorLabels.get(code);
+        return label != null && !label.isEmpty() ? label : code;
     }
 }

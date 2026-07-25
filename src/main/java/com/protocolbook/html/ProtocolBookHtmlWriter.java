@@ -20,7 +20,7 @@ import java.util.*;
 public class ProtocolBookHtmlWriter {
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, File outFile) throws IOException {
-        Map<Integer, List<Protocol>> groups = new TreeMap<Integer, List<Protocol>>();
+        Map<Integer, List<Protocol>> groups = new TreeMap<Integer, List<Protocol>>(GROUP_ORDER);
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
             groups.computeIfAbsent(groupKey(p), k -> new ArrayList<Protocol>()).add(p);
@@ -31,7 +31,7 @@ public class ProtocolBookHtmlWriter {
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
         html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n<h1>Protocol Book</h1>\n");
         for (Map.Entry<Integer, List<Protocol>> group : groups.entrySet()) {
-            html.append("<details class=\"group\" open>\n<summary>").append(esc(groupLabel(group.getKey(), group.getValue())))
+            html.append("<details class=\"group\">\n<summary>").append(esc(groupLabel(group.getKey(), group.getValue())))
                     .append(" (").append(group.getValue().size()).append(")</summary>\n");
             for (Protocol p : group.getValue()) appendProtocol(html, p, overrides, labels);
             html.append("</details>\n");
@@ -53,6 +53,9 @@ public class ProtocolBookHtmlWriter {
         ProtocolOverride override = overrides.get(number);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
             html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(esc(override.getNotes())).append("</div>\n");
+        }
+        if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
+            html.append("<p class=\"destination\">Sends to: ").append(esc(override.getSendDestination())).append("</p>\n");
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
@@ -105,6 +108,7 @@ public class ProtocolBookHtmlWriter {
         if (a.getNoiseIndex() != null) html.append(" (NI ").append(esc(a.getNoiseIndex())).append(")");
         if (a.getPitch() != null) html.append(" &middot; pitch ").append(esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(esc(a.getRotationTime())).append(" s rotation");
+        if (a.getDetector() != null) html.append(" &middot; Detector: ").append(esc(labels.detector(a.getDetector())));
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
@@ -140,17 +144,51 @@ public class ProtocolBookHtmlWriter {
 
     private String groupLabel(int key, List<Protocol> group) {
         if (key == Integer.MAX_VALUE) return "Other";
-        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
-        for (Protocol p : group) {
-            String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
-            if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
-            counts.merge(bodyPart, 1, Integer::sum);
+
+        String label;
+        if (GROUP_LABEL_OVERRIDES.containsKey(key)) {
+            label = GROUP_LABEL_OVERRIDES.get(key);
+        } else {
+            Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
+            for (Protocol p : group) {
+                String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
+                if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
+                counts.merge(bodyPart, 1, Integer::sum);
+            }
+            String best = null; int bestCount = 0;
+            for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
+            String raw = best != null ? best : ("Protocol " + key);
+            label = Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
         }
-        String best = null; int bestCount = 0;
-        for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
-        String label = best != null ? best : ("Protocol " + key);
-        return Character.toUpperCase(label.charAt(0)) + label.substring(1);
+
+        if (!QA_GROUP.equals(key) && isMajorityPediatric(group)) label = "Peds " + label;
+        return label;
     }
+
+    private boolean isMajorityPediatric(List<Protocol> group) {
+        int pediatric = 0, other = 0;
+        for (Protocol p : group) {
+            String patientType = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
+            if (patientType != null && patientType.trim().equalsIgnoreCase("pediatric")) pediatric++;
+            else other++;
+        }
+        return pediatric > other;
+    }
+
+    // Body-part majority vote mislabels some groups - override those by hand:
+    // 2.x and 12.x mix "head"/"orbit" metadata but are really the facial bones/sinus/orbit family,
+    // and 10.x is QA/phantom protocols with no meaningful body part at all.
+    private static final Integer QA_GROUP = 10;
+    private static final Map<Integer, String> GROUP_LABEL_OVERRIDES = new HashMap<Integer, String>() {{
+        put(2, "Face");
+        put(12, "Face");
+        put(QA_GROUP, "Miscellaneous QA");
+    }};
+
+    // Numbered groups sort in order, except QA/phantom protocols (10.x) which belong at the very
+    // bottom of the book instead of wedged between "Lower Extremities" and the pediatric groups.
+    private static final Comparator<Integer> GROUP_ORDER = Comparator.comparingInt(
+            key -> QA_GROUP.equals(key) ? Integer.MAX_VALUE - 1 : key);
 
     private String esc(Object value) {
         if (value == null) return "";
@@ -159,14 +197,40 @@ public class ProtocolBookHtmlWriter {
     }
 
     private static final String CSS =
-            "body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;}" +
-            "details.group{margin-bottom:1rem;border:1px solid #ccc;border-radius:6px;padding:.5rem 1rem;}" +
-            "details.group>summary{font-size:1.2rem;font-weight:bold;cursor:pointer;}" +
-            ".protocol{border-top:1px solid #ddd;margin-top:1rem;padding-top:1rem;}" +
-            ".meta,.dose{color:#555;font-size:.9rem;}" +
-            ".notes{background:#fff8e1;border:1px solid #e0c060;border-radius:4px;padding:.5rem;margin:.5rem 0;}" +
-            ".series{margin:.75rem 0 .75rem 1rem;}" +
-            "table.recons{border-collapse:collapse;margin:.25rem 0 .75rem;}" +
-            "table.recons th,table.recons td{border:1px solid #ddd;padding:.25rem .5rem;font-size:.9rem;text-align:left;}" +
-            "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:#555;}";
+            ":root{" +
+            "--bg:#0f1115;--card:#171a21;--border:#2a2e37;--text:#e7e9ec;--text-muted:#9aa1ac;" +
+            "--accent:#5db1ff;--accent-2:#6fd7c4;--notes-bg:rgba(224,176,64,.14);--notes-border:#c9a227;" +
+            "--notes-text:#e8d9ad;--row-alt:rgba(255,255,255,.03);--shadow:rgba(0,0,0,.45);}" +
+            "@media (prefers-color-scheme:light){:root{" +
+            "--bg:#f6f7f9;--card:#ffffff;--border:#e1e4e9;--text:#1b1e24;--text-muted:#5b6270;" +
+            "--accent:#2563eb;--accent-2:#0d9488;--notes-bg:#fff8e1;--notes-border:#e0c060;" +
+            "--notes-text:#6b5410;--row-alt:rgba(0,0,0,.025);--shadow:rgba(0,0,0,.08);}}" +
+            "*{box-sizing:border-box;}" +
+            "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;" +
+            "background:var(--bg);color:var(--text);max-width:960px;margin:2rem auto;padding:0 1.25rem 4rem;" +
+            "line-height:1.45;-webkit-font-smoothing:antialiased;}" +
+            "h1{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;margin:0 0 1.5rem;}" +
+            "details.group{margin-bottom:1rem;background:var(--card);border:1px solid var(--border);" +
+            "border-radius:10px;padding:.15rem 1.25rem .9rem;box-shadow:0 1px 3px var(--shadow);}" +
+            "details.group>summary{font-size:1.1rem;font-weight:600;cursor:pointer;padding:.85rem 0;" +
+            "list-style:revert;color:var(--text);}" +
+            "details.group>summary::marker{color:var(--accent);}" +
+            "details.group>summary:hover{color:var(--accent);}" +
+            ".protocol{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}" +
+            ".protocol:first-of-type{margin-top:.25rem;}" +
+            ".protocol h2{font-size:1.02rem;font-weight:600;margin:0 0 .25rem;}" +
+            ".meta,.dose,.destination{color:var(--text-muted);font-size:.85rem;margin:0 0 .35rem;}" +
+            ".notes{background:var(--notes-bg);border:1px solid var(--notes-border);color:var(--notes-text);" +
+            "border-radius:6px;padding:.5rem .65rem;margin:.5rem 0;font-size:.9rem;}" +
+            ".series{margin:.85rem 0 .85rem 1rem;padding-left:.85rem;border-left:2px solid var(--border);}" +
+            ".series h3{font-size:.92rem;font-weight:600;margin:0 0 .3rem;color:var(--text);}" +
+            ".contrast{color:var(--accent-2);font-size:.85rem;margin:0 0 .3rem;}" +
+            ".acquisition{font-size:.9rem;margin:0 0 .35rem;}" +
+            "table.recons{width:100%;border-collapse:collapse;margin:.2rem 0 .75rem;font-size:.85rem;}" +
+            "table.recons th{text-align:left;color:var(--text-muted);font-weight:600;padding:.35rem .6rem;" +
+            "border-bottom:1px solid var(--border);}" +
+            "table.recons td{padding:.35rem .6rem;border-bottom:1px solid var(--border);}" +
+            "table.recons tr:last-child td{border-bottom:none;}" +
+            "table.recons tr:nth-child(even){background:var(--row-alt);}" +
+            "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:var(--text-muted);font-style:italic;}";
 }
