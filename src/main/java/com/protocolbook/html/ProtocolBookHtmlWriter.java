@@ -46,7 +46,7 @@ public class ProtocolBookHtmlWriter {
     private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
-        html.append("<div class=\"protocol\">\n<h2>").append(esc(number)).append(" &mdash; ").append(esc(m == null ? null : m.getName())).append("</h2>\n");
+        html.append("<details class=\"protocol\">\n<summary>").append(esc(number)).append(" &mdash; ").append(esc(m == null ? null : m.getName())).append("</summary>\n");
         html.append("<p class=\"meta\">").append(esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
@@ -68,7 +68,7 @@ public class ProtocolBookHtmlWriter {
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(esc(String.join("; ", p.getNotes()))).append("</p>\n");
         }
-        html.append("</div>\n");
+        html.append("</details>\n");
     }
 
     private void appendSeries(StringBuilder html, Series s, LabelConfig labels) {
@@ -216,9 +216,13 @@ public class ProtocolBookHtmlWriter {
             "list-style:revert;color:var(--text);}" +
             "details.group>summary::marker{color:var(--accent);}" +
             "details.group>summary:hover{color:var(--accent);}" +
-            ".protocol{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem;}" +
-            ".protocol:first-of-type{margin-top:.25rem;}" +
-            ".protocol h2{font-size:1.02rem;font-weight:600;margin:0 0 .25rem;}" +
+            "details.protocol{border-left:2px solid var(--border);margin:.75rem 0 0 .5rem;padding:0 0 .1rem .9rem;}" +
+            "details.protocol:first-of-type{margin-top:.25rem;}" +
+            "details.protocol[open]{padding-bottom:.75rem;}" +
+            "details.protocol>summary{font-size:1.02rem;font-weight:600;cursor:pointer;padding:.5rem 0;" +
+            "list-style:revert;color:var(--text);}" +
+            "details.protocol>summary::marker{color:var(--accent-2);}" +
+            "details.protocol>summary:hover{color:var(--accent);}" +
             ".meta,.dose,.destination{color:var(--text-muted);font-size:.85rem;margin:0 0 .35rem;}" +
             ".notes{background:var(--notes-bg);border:1px solid var(--notes-border);color:var(--notes-text);" +
             "border-radius:6px;padding:.5rem .65rem;margin:.5rem 0;font-size:.9rem;}" +
