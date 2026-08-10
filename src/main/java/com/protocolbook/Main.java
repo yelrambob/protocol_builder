@@ -1,5 +1,6 @@
 package com.protocolbook;
 
+import com.protocolbook.html.PediatricWeightSheetWriter;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
 import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
@@ -21,18 +22,20 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Usage: Main <input> [--json <dir>] [--html <file>] [--overrides <file>]
+ * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
  * --plane-labels to ./plane-labels.json, all only if present.
+ * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
+ * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
 public class Main {
     public static void main(String[] args) {
         try {
             File input = null;
-            File jsonDir = null, htmlFile = null;
+            File jsonDir = null, htmlFile = null, pedsWeightFile = null;
             File overridesFile = new File("protocol-overrides.json");
             File kernelLabelsFile = new File("kernel-labels.json");
             File planeLabelsFile = new File("plane-labels.json");
@@ -40,6 +43,7 @@ public class Main {
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
+                else if ("--peds-weights".equals(args[i])) pedsWeightFile = new File(args[++i]);
                 else if ("--overrides".equals(args[i])) overridesFile = new File(args[++i]);
                 else if ("--kernel-labels".equals(args[i])) kernelLabelsFile = new File(args[++i]);
                 else if ("--plane-labels".equals(args[i])) planeLabelsFile = new File(args[++i]);
@@ -74,6 +78,10 @@ public class Main {
                 int added = CodeLabels.mergeTemplate(new ArrayList<String>(collectCodes(protocols, false)), planeLabelsFile);
                 System.out.println("Plane labels file " + planeLabelsFile.getAbsolutePath() + ": added " + added
                         + " new code(s) (0/90/180/270 already default to AP/Lateral/PA/Lateral unless overridden here)");
+            }
+            if (pedsWeightFile != null) {
+                new PediatricWeightSheetWriter().write(protocols, pedsWeightFile);
+                System.out.println("Wrote pediatric weight reference to " + pedsWeightFile.getAbsolutePath());
             }
             if (jsonDir != null) {
                 new ProtocolJsonWriter().writeAll(protocols, jsonDir);
