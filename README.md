@@ -4,14 +4,33 @@ Reads a GE `Protocols.xlsm` workbook with Apache POI and prints a compact summar
 
 ## Run
 
-Requires Java 8+ and Gradle 8.x (or the included wrapper once generated).
+Requires Java 8+. Always use the Gradle **wrapper** (`gradlew`), not a system-installed `gradle` binary — the wrapper pins the exact Gradle version (8.x) this build is written for, and a distro-packaged `gradle` is often years out of date and will fail with confusing errors on this `build.gradle`.
 
-```powershell
-gradle test
-gradle run --args="C:\path\to\Protocols.xlsm"
+macOS/Linux:
+
+```bash
+./gradlew test
+./gradlew run --args="/path/to/Protocols.xlsm"
 ```
 
-With `Protocols.xlsm` in this directory, `gradle run` is sufficient. Parse/validation failures are printed as `ERROR:` messages and return exit code 2.
+Windows:
+
+```powershell
+gradlew.bat test
+gradlew.bat run --args="C:\path\to\Protocols.xlsm"
+```
+
+With `Protocols.xlsm` in this directory, `./gradlew run` (or `gradlew.bat run`) is sufficient. Parse/validation failures are printed as `ERROR:` messages and return exit code 2.
+
+### Troubleshooting: `gradlew` fails with a certificate/PKIX error
+
+The wrapper downloads its pinned Gradle distribution over HTTPS on first run. If that fails with `unable to find valid certification path to requested target`, it's a JVM trust-store problem, not a bad download URL. On Ubuntu (including EC2 images), this is usually the `ca-certificates-java` package's `cacerts` file being out of sync with the OS-level CA bundle that tools like `curl` already trust. Fix it with:
+
+```bash
+sudo dpkg-reconfigure ca-certificates-java
+```
+
+then re-run `./gradlew`.
 
 ## VS Code
 
