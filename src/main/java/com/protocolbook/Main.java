@@ -6,6 +6,7 @@ import com.protocolbook.html.ProtocolBookHtmlWriter;
 import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
 import com.protocolbook.labels.LabelConfig;
+import com.protocolbook.manual.ManualProtocols;
 import com.protocolbook.model.Group;
 import com.protocolbook.model.Metadata;
 import com.protocolbook.model.Protocol;
@@ -30,14 +31,17 @@ import java.util.TreeSet;
 /**
  * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--logo <file>]
- *             [--pdf-library <file>]
+ *             [--pdf-library <file>] [--manual-protocols <file>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
  * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, --logo to
- * ./logo.png, --pdf-library to ./pdf-library.json, all only if present. --logo is embedded
- * (base64) into the generated book; --pdf-library entries are linked (title+url pairs you
- * maintain by hand - see PdfLibrary) since those files live on their own separate server.
+ * ./logo.png, --pdf-library to ./pdf-library.json, --manual-protocols to ./manual-protocols.json,
+ * all only if present. --logo is embedded (base64) into the generated book; --pdf-library entries
+ * are linked (title+url pairs you maintain by hand - see PdfLibrary) since those files live on
+ * their own separate server. --manual-protocols adds protocols that don't exist as a folder on
+ * the scanner (see ManualProtocols) - merged in before every output, so they flow through --json/
+ * --html/--peds-weights identically to scanner-discovered ones.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -52,6 +56,7 @@ public class Main {
             File categoryLabelsFile = new File("category-labels.json");
             File logoFile = new File("logo.png");
             File pdfLibraryFile = new File("pdf-library.json");
+            File manualProtocolsFile = new File("manual-protocols.json");
             boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
@@ -63,6 +68,7 @@ public class Main {
                 else if ("--category-labels".equals(args[i])) categoryLabelsFile = new File(args[++i]);
                 else if ("--logo".equals(args[i])) logoFile = new File(args[++i]);
                 else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
+                else if ("--manual-protocols".equals(args[i])) manualProtocolsFile = new File(args[++i]);
                 else if ("--init-overrides".equals(args[i])) initOverrides = true;
                 else if ("--init-kernel-labels".equals(args[i])) initKernelLabels = true;
                 else if ("--init-plane-labels".equals(args[i])) initPlaneLabels = true;
@@ -74,6 +80,12 @@ public class Main {
             ProtocolParser parser = input.isDirectory() ? new ProtocolFolderWalker() : new GEWorkbookParser();
             List<Protocol> protocols = parser.parse(input);
             System.out.println("Parsed " + protocols.size() + " protocol(s) from " + input.getAbsolutePath());
+
+            List<Protocol> manualProtocols = ManualProtocols.load(manualProtocolsFile);
+            if (!manualProtocols.isEmpty()) {
+                protocols = ManualProtocols.merge(protocols, manualProtocols);
+                System.out.println("Added " + manualProtocols.size() + " manual protocol(s) from " + manualProtocolsFile.getAbsolutePath());
+            }
             for (Protocol p : protocols) {
                 String name = p.getMetadata() == null ? "(unnamed)" : p.getMetadata().getName();
                 System.out.printf("- %s: %d series, %d reconstructions, %d notes, %d advanced fields%n",
