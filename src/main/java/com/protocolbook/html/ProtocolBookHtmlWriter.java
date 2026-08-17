@@ -10,30 +10,37 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * Renders the parsed protocols as a single browsable HTML page, grouped into collapsible
- * sections by protocol number (e.g. all "9.x" protocols together), with each section labeled
- * by the body part most common among its protocols. Protocols flagged excluded in the
- * overrides are left out entirely; protocols with manual scanning notes show them inline.
+ * Renders the parsed protocols as a single browsable HTML page, grouped into collapsed-by-default
+ * sections by reading category (Neuro/Body/MSK/Other, guessed from body part - see
+ * {@link LabelConfig#category}). Protocols flagged excluded in the overrides are left out
+ * entirely; protocols with manual scanning notes show them inline.
  * Shares its base look (fonts, tables, print rules) with the other generated pages via
  * {@link HtmlSupport} - style changes made there apply everywhere automatically.
  */
 public class ProtocolBookHtmlWriter {
+    // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
+    private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, File outFile) throws IOException {
-        Map<Integer, List<Protocol>> groups = new TreeMap<Integer, List<Protocol>>();
+        Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
-            groups.computeIfAbsent(groupKey(p), k -> new ArrayList<Protocol>()).add(p);
+            String category = labels.category(p.getMetadata() == null ? null : p.getMetadata().getBodyPart());
+            groups.computeIfAbsent(category, k -> new ArrayList<Protocol>()).add(p);
         }
         for (List<Protocol> group : groups.values()) group.sort(Comparator.comparingDouble(this::sortKey));
+
+        List<String> categories = new ArrayList<String>(groups.keySet());
+        categories.sort(Comparator.comparingInt(this::categoryRank).thenComparing(Comparator.naturalOrder()));
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
         html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n<h1>Protocol Book</h1>\n");
-        for (Map.Entry<Integer, List<Protocol>> group : groups.entrySet()) {
-            html.append("<details class=\"group\" open>\n<summary>").append(HtmlSupport.esc(groupLabel(group.getKey(), group.getValue())))
-                    .append(" (").append(group.getValue().size()).append(")</summary>\n");
-            for (Protocol p : group.getValue()) appendProtocol(html, p, overrides, labels);
+        for (String category : categories) {
+            List<Protocol> group = groups.get(category);
+            html.append("<details class=\"group\">\n<summary>").append(HtmlSupport.esc(category))
+                    .append(" (").append(group.size()).append(")</summary>\n");
+            for (Protocol p : group) appendProtocol(html, p, overrides, labels);
             html.append("</details>\n");
         }
         html.append("</body>\n</html>\n");
@@ -41,6 +48,11 @@ public class ProtocolBookHtmlWriter {
         if (outFile.getParentFile() != null && !outFile.getParentFile().isDirectory()) outFile.getParentFile().mkdirs();
         try (FileWriter w = new FileWriter(outFile)) { w.write(html.toString()); }
         return outFile;
+    }
+
+    private int categoryRank(String category) {
+        int idx = CATEGORY_ORDER.indexOf(category);
+        return idx >= 0 ? idx : CATEGORY_ORDER.size();
     }
 
     private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
@@ -121,12 +133,6 @@ public class ProtocolBookHtmlWriter {
         return o != null && o.isExcluded();
     }
 
-    private int groupKey(Protocol p) {
-        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null) return Integer.MAX_VALUE;
-        try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MAX_VALUE; }
-    }
-
     private double sortKey(Protocol p) {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         if (number == null) return Double.MAX_VALUE;
@@ -136,20 +142,6 @@ public class ProtocolBookHtmlWriter {
             int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
             return major + minor / 10000.0; // keeps "9.10" after "9.2" (minor compared as an integer, not a decimal)
         } catch (Exception e) { return Double.MAX_VALUE; }
-    }
-
-    private String groupLabel(int key, List<Protocol> group) {
-        if (key == Integer.MAX_VALUE) return "Other";
-        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
-        for (Protocol p : group) {
-            String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
-            if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
-            counts.merge(bodyPart, 1, Integer::sum);
-        }
-        String best = null; int bestCount = 0;
-        for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
-        String label = best != null ? best : ("Protocol " + key);
-        return Character.toUpperCase(label.charAt(0)) + label.substring(1);
     }
 
     private static final String CSS = HtmlSupport.BASE_CSS +

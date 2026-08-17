@@ -33,7 +33,7 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", kneeNotes); // "CT LWR EXT KNEE WITH CONTRAST"
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>());
+        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>());
         new ProtocolBookHtmlWriter().write(protocols, overrides, labels, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -42,12 +42,13 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains(">8.2 &mdash; CT LWR EXT HIP WITH CONTRAST<"), "non-excluded protocol with the same name must still appear");
         assertTrue(html.contains("Pad under the knee for comfort."), "manual scanning note must be rendered");
         assertTrue(html.contains("AXIAL KNEE DET 2.5MM"), "recon display name should still show up");
-        // groups: protocol numbers seen are 3.x, 4.x, 7.x, 8.x, 9.x -> 5 group headers, labeled by body part
-        String lower = html.toLowerCase();
-        assertTrue(lower.contains("lower extremities"));
-        assertTrue(lower.contains("pelvis"));
+        // body parts present: lower/upper Extremities -> MSK, neck/spine -> Neuro, pelvis -> Body
+        assertTrue(html.contains("<summary>MSK"));
+        assertTrue(html.contains("<summary>Body"));
+        assertTrue(html.contains("<summary>Neuro"));
         long groupCount = html.lines().filter(l -> l.contains("class=\"group\"")).count();
-        assertEquals(5, groupCount);
+        assertEquals(3, groupCount, "should be grouped into 3 reading categories, not one section per protocol-number prefix");
+        assertFalse(html.contains("<details class=\"group\" open>"), "categories should start collapsed");
     }
 
     @Test void scoutsRenderAsOneTableWithPlaneLabelsAndKernelsAreMapped(@TempDir Path tempDir) throws Exception {
@@ -57,7 +58,7 @@ class ProtocolBookHtmlWriterTest {
         kernelLabels.put("8", "STD");
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>()); // default plane labels apply
+        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -75,7 +76,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>()), out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a

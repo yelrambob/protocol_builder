@@ -6,6 +6,7 @@ import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
 import com.protocolbook.labels.LabelConfig;
 import com.protocolbook.model.Group;
+import com.protocolbook.model.Metadata;
 import com.protocolbook.model.Protocol;
 import com.protocolbook.model.Reconstruction;
 import com.protocolbook.model.Series;
@@ -23,11 +24,11 @@ import java.util.TreeSet;
 
 /**
  * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
- *             [--kernel-labels <file>] [--plane-labels <file>]
- *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels]
+ *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
+ *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
- * --plane-labels to ./plane-labels.json, all only if present.
+ * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, all only if present.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -39,7 +40,8 @@ public class Main {
             File overridesFile = new File("protocol-overrides.json");
             File kernelLabelsFile = new File("kernel-labels.json");
             File planeLabelsFile = new File("plane-labels.json");
-            boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false;
+            File categoryLabelsFile = new File("category-labels.json");
+            boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
@@ -47,9 +49,11 @@ public class Main {
                 else if ("--overrides".equals(args[i])) overridesFile = new File(args[++i]);
                 else if ("--kernel-labels".equals(args[i])) kernelLabelsFile = new File(args[++i]);
                 else if ("--plane-labels".equals(args[i])) planeLabelsFile = new File(args[++i]);
+                else if ("--category-labels".equals(args[i])) categoryLabelsFile = new File(args[++i]);
                 else if ("--init-overrides".equals(args[i])) initOverrides = true;
                 else if ("--init-kernel-labels".equals(args[i])) initKernelLabels = true;
                 else if ("--init-plane-labels".equals(args[i])) initPlaneLabels = true;
+                else if ("--init-category-labels".equals(args[i])) initCategoryLabels = true;
                 else if (input == null) input = new File(args[i]);
             }
             if (input == null) input = new File("Protocols.xlsm");
@@ -79,6 +83,16 @@ public class Main {
                 System.out.println("Plane labels file " + planeLabelsFile.getAbsolutePath() + ": added " + added
                         + " new code(s) (0/90/180/270 already default to AP/Lateral/PA/Lateral unless overridden here)");
             }
+            if (initCategoryLabels) {
+                TreeSet<String> bodyParts = new TreeSet<String>();
+                for (Protocol p : protocols) {
+                    Metadata m = p.getMetadata();
+                    if (m != null && m.getBodyPart() != null && !m.getBodyPart().isEmpty()) bodyParts.add(m.getBodyPart());
+                }
+                int added = CodeLabels.mergeTemplate(new ArrayList<String>(bodyParts), categoryLabelsFile);
+                System.out.println("Category labels file " + categoryLabelsFile.getAbsolutePath() + ": added " + added
+                        + " new body part(s) - leave blank to keep the guessed category (Neuro/Body/MSK/Other), fill in only to override it");
+            }
             if (pedsWeightFile != null) {
                 new PediatricWeightSheetWriter().write(protocols, pedsWeightFile);
                 System.out.println("Wrote pediatric weight reference to " + pedsWeightFile.getAbsolutePath());
@@ -89,7 +103,7 @@ public class Main {
             }
             if (htmlFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
-                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile);
+                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
                 new ProtocolBookHtmlWriter().write(protocols, overrides, labels, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")"));
