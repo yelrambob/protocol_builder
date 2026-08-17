@@ -19,13 +19,16 @@ import java.util.*;
  * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
  * its own top-level sidebar category, linking out with target="_blank" since those files live
  * on a different server than wherever this book itself ends up hosted.
+ * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
+ * convention (protocol number -> filename) rather than a maintained list; the <img> hides
+ * itself client-side if that particular protocol doesn't have one on the server.
  */
 public class ProtocolBookHtmlWriter {
     // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
     private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
-                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, File outFile) throws IOException {
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages, File outFile) throws IOException {
         Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
@@ -84,7 +87,7 @@ public class ProtocolBookHtmlWriter {
         for (String category : categories) {
             for (Protocol p : groups.get(category)) {
                 html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
-                appendProtocol(html, p, overrides, labels, logoDataUri);
+                appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
                 html.append("</section>\n");
             }
         }
@@ -113,13 +116,21 @@ public class ProtocolBookHtmlWriter {
         return idx >= 0 ? idx : CATEGORY_ORDER.size();
     }
 
-    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels, String logoDataUri) {
+    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels,
+                                 String logoDataUri, ProtocolImages protocolImages) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         html.append("<div class=\"protocol-header\">\n");
         if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(m == null ? null : m.getName())).append("</h2>\n");
         html.append("</div>\n");
+
+        String imageUrl = protocolImages == null ? null : protocolImages.urlFor(number);
+        if (imageUrl != null) {
+            html.append("<img class=\"protocol-image\" src=\"").append(HtmlSupport.esc(imageUrl)).append("\" alt=\"")
+                    .append(HtmlSupport.esc(number)).append(" reference image\" onerror=\"this.style.display='none';\">\n");
+        }
+
         html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
@@ -242,6 +253,7 @@ public class ProtocolBookHtmlWriter {
             "section.protocol-view{background:#fff;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.25);padding:2rem 2.5rem;max-width:1100px;margin:0 auto;}" +
             ".protocol-header{display:flex;align-items:center;gap:1rem;border-bottom:3px solid var(--ahs-orange);padding-bottom:.4rem;margin-bottom:1rem;}" +
             ".protocol-logo{max-height:48px;max-width:160px;flex-shrink:0;}" +
+            ".protocol-image{display:block;max-width:100%;max-height:400px;margin:0 auto 1rem;border-radius:6px;}" +
             "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
             ".meta,.dose{color:#555;font-size:.9rem;}" +

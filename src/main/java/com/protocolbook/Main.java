@@ -3,6 +3,7 @@ package com.protocolbook;
 import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.PediatricWeightSheetWriter;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
+import com.protocolbook.html.ProtocolImages;
 import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
 import com.protocolbook.labels.LabelConfig;
@@ -32,6 +33,7 @@ import java.util.TreeSet;
  * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--logo <file>]
  *             [--pdf-library <file>] [--manual-protocols <file>]
+ *             [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
@@ -41,7 +43,9 @@ import java.util.TreeSet;
  * are linked (title+url pairs you maintain by hand - see PdfLibrary) since those files live on
  * their own separate server. --manual-protocols adds protocols that don't exist as a folder on
  * the scanner (see ManualProtocols) - merged in before every output, so they flow through --json/
- * --html/--peds-weights identically to scanner-discovered ones.
+ * --html/--peds-weights identically to scanner-discovered ones. --protocol-images-base points at
+ * wherever per-protocol reference images are hosted, named "<protocolNumber>.<ext>" - no list to
+ * maintain, see ProtocolImages.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -57,6 +61,7 @@ public class Main {
             File logoFile = new File("logo.png");
             File pdfLibraryFile = new File("pdf-library.json");
             File manualProtocolsFile = new File("manual-protocols.json");
+            String protocolImagesBase = null, protocolImagesExt = "png";
             boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
@@ -69,6 +74,8 @@ public class Main {
                 else if ("--logo".equals(args[i])) logoFile = new File(args[++i]);
                 else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
                 else if ("--manual-protocols".equals(args[i])) manualProtocolsFile = new File(args[++i]);
+                else if ("--protocol-images-base".equals(args[i])) protocolImagesBase = args[++i];
+                else if ("--protocol-images-ext".equals(args[i])) protocolImagesExt = args[++i];
                 else if ("--init-overrides".equals(args[i])) initOverrides = true;
                 else if ("--init-kernel-labels".equals(args[i])) initKernelLabels = true;
                 else if ("--init-plane-labels".equals(args[i])) initPlaneLabels = true;
@@ -131,11 +138,13 @@ public class Main {
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
                 String logoDataUri = loadLogoDataUri(logoFile);
                 List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, htmlFile);
+                ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
+                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
-                        + (pdfLibrary.isEmpty() ? "" : " (" + pdfLibrary.size() + " PDF link(s) from " + pdfLibraryFile + ")"));
+                        + (pdfLibrary.isEmpty() ? "" : " (" + pdfLibrary.size() + " PDF link(s) from " + pdfLibraryFile + ")")
+                        + (protocolImages != null ? " (protocol images from " + protocolImagesBase + "/<number>." + protocolImagesExt + ")" : ""));
             }
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());
