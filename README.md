@@ -41,6 +41,36 @@ gradlew.bat run --args="C:\path\to\ExportedProtocolsFolder"
 
 With `Protocols.xlsm` in this directory, running `./gradlew run` (or `gradlew.bat run`) with no arguments is enough — it defaults to `./Protocols.xlsm`. Parse/validation failures are printed as `ERROR:` messages and the process exits with code `2`.
 
+### Copy-paste commands
+
+Run from inside the `protocol_builder` directory. Substitute your actual workbook path — match the filename's case exactly (Linux filesystems are case-sensitive: `protocols.xlsm` and `Protocols.xlsm` are different files).
+
+Linux/macOS:
+
+```bash
+cd ~/protocol_builder
+./gradlew test
+./gradlew run --args="./protocols.xlsm"
+./gradlew run --args="$HOME/protocol_builder/protocols.xlsm"
+./gradlew run --args="./protocols.xlsm --html book.html"
+```
+
+> `--args` takes one quoted string, don't pass it twice — combine flags into the one string instead, e.g. `--args="./protocols.xlsm --html book.html"`.
+
+Windows (PowerShell or Command Prompt):
+
+```powershell
+cd C:\path\to\protocol_builder
+gradlew.bat test
+gradlew.bat run --args="protocols.xlsm"
+gradlew.bat run --args="C:\path\to\protocol_builder\protocols.xlsm"
+gradlew.bat run --args="protocols.xlsm --html book.html"
+```
+
+> `--args` takes one quoted string on Windows too — combine flags into it the same way, e.g. `--args="protocols.xlsm --html book.html"`.
+
+> Note: `~` is **not** expanded by Gradle's `--args` — it's passed through as a literal character, not resolved to your home directory the way it would be at an interactive shell prompt. Use `$HOME` (Linux/macOS) or a full `C:\...` path (Windows) instead, or just a relative path when already in the right directory.
+
 ## Command-line reference
 
 ```
