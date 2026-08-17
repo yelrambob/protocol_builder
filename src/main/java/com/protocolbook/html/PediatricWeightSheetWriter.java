@@ -22,6 +22,8 @@ import java.util.regex.Pattern;
  * "NNKG", a comparison-prefixed "&lt;NNKG"/"&gt;=NNKG", and a range "NN-NNKG"/"NN to NNKG".
  * If a real protocol name doesn't get picked up, the pattern needs extending, not the whole
  * design rethought.
+ *
+ * Shares its base look with {@link ProtocolBookHtmlWriter} via {@link HtmlSupport}.
  */
 public class PediatricWeightSheetWriter {
     private static final double KG_TO_LB = 2.20462;
@@ -44,9 +46,9 @@ public class PediatricWeightSheetWriter {
         html.append("<table>\n<tr><th>#</th><th>Protocol</th><th>Body part</th></tr>\n");
         for (Protocol p : peds) {
             Metadata m = p.getMetadata();
-            html.append("<tr><td>").append(esc(m == null ? null : m.getProtocolNumber())).append("</td><td>")
+            html.append("<tr><td>").append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append("</td><td>")
                     .append(annotateWeights(m == null ? null : m.getName())).append("</td><td>")
-                    .append(esc(m == null ? null : m.getBodyPart())).append("</td></tr>\n");
+                    .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</td></tr>\n");
         }
         html.append("</table>\n</body>\n</html>\n");
 
@@ -77,7 +79,7 @@ public class PediatricWeightSheetWriter {
         StringBuilder out = new StringBuilder();
         int last = 0;
         while (matcher.find()) {
-            out.append(esc(name.substring(last, matcher.start()))).append(esc(matcher.group()));
+            out.append(HtmlSupport.esc(name.substring(last, matcher.start()))).append(HtmlSupport.esc(matcher.group()));
             if (matcher.group("lo") != null) {
                 out.append(" (").append(kgToLb(matcher.group("lo"))).append('-').append(kgToLb(matcher.group("hi"))).append(" lb)");
             } else {
@@ -85,7 +87,7 @@ public class PediatricWeightSheetWriter {
             }
             last = matcher.end();
         }
-        out.append(esc(name.substring(last)));
+        out.append(HtmlSupport.esc(name.substring(last)));
         return out.toString();
     }
 
@@ -93,17 +95,5 @@ public class PediatricWeightSheetWriter {
         return Math.round(Double.parseDouble(kg) * KG_TO_LB);
     }
 
-    private String esc(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
-    }
-
-    private static final String CSS =
-            "body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;}" +
-            "h1{margin-bottom:.25rem;}" +
-            ".subtitle{color:#555;margin-top:0;}" +
-            "table{border-collapse:collapse;width:100%;}" +
-            "th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left;font-size:.95rem;}" +
-            "th{background:#f0f0f0;}" +
-            "@media print{body{margin:0;max-width:none;}tr{break-inside:avoid;}}";
+    private static final String CSS = HtmlSupport.BASE_CSS;
 }
