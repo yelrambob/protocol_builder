@@ -34,7 +34,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>());
-        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, out);
+        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // two different protocols share this name (9.4 lower-extremities and 8.2 pelvis); only 9.4 is excluded
@@ -67,7 +67,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mA</th>"), "scout series should render as a single Plane/kV/mA table");
@@ -84,11 +84,37 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
         // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
         assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
+    }
+
+    @Test void embedsLogoInMenuWelcomeAndEveryProtocolWhenProvided(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        String logoDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("<div class=\"menu-logo\"><img src=\"" + logoDataUri + "\""), "logo should appear at the top of the sidebar");
+        assertTrue(html.contains("<img class=\"welcome-logo\" src=\"" + logoDataUri + "\""), "logo should appear on the welcome view");
+        long protocolLogoCount = html.lines().filter(l -> l.contains("<img class=\"protocol-logo\"")).count();
+        assertEquals(12, protocolLogoCount, "logo should appear on every one of the 12 protocol pages (none excluded in this test)");
+    }
+
+    @Test void omitsLogoElementsWhenNoneProvided(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        // CSS rules for these classes are always present (static styling); only the rendered <img>/<div> markup should be absent
+        assertFalse(html.contains("<div class=\"menu-logo\">"));
+        assertFalse(html.contains("<img class=\"welcome-logo\""));
+        assertFalse(html.contains("<img class=\"protocol-logo\""));
     }
 }

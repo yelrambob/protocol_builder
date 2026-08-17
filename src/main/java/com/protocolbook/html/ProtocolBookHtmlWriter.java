@@ -21,7 +21,7 @@ public class ProtocolBookHtmlWriter {
     // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
     private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
 
-    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, File outFile) throws IOException {
+    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, String logoDataUri, File outFile) throws IOException {
         Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
@@ -41,7 +41,9 @@ public class ProtocolBookHtmlWriter {
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
         html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n");
 
-        html.append("<nav class=\"main-menu\">\n<ul>\n");
+        html.append("<nav class=\"main-menu\">\n");
+        if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
+        html.append("<ul>\n");
         for (String category : categories) {
             List<Protocol> group = groups.get(category);
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
@@ -61,12 +63,13 @@ public class ProtocolBookHtmlWriter {
         html.append("</ul>\n</nav>\n");
 
         html.append("<main class=\"main-content\">\n");
-        html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n")
-                .append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
+        if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
+        html.append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
         for (String category : categories) {
             for (Protocol p : groups.get(category)) {
                 html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
-                appendProtocol(html, p, overrides, labels);
+                appendProtocol(html, p, overrides, labels, logoDataUri);
                 html.append("</section>\n");
             }
         }
@@ -95,10 +98,13 @@ public class ProtocolBookHtmlWriter {
         return idx >= 0 ? idx : CATEGORY_ORDER.size();
     }
 
-    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
+    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels, String logoDataUri) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
+        html.append("<div class=\"protocol-header\">\n");
+        if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(m == null ? null : m.getName())).append("</h2>\n");
+        html.append("</div>\n");
         html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
@@ -195,6 +201,9 @@ public class ProtocolBookHtmlWriter {
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
             ".main-menu:hover,.main-menu.expanded{width:300px;}" +
+            ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
+            ".menu-logo img{max-width:44px;max-height:44px;}" +
+            ".main-menu:hover .menu-logo img,.main-menu.expanded .menu-logo img{max-width:220px;}" +
             ".main-menu ul{list-style:none;margin:0;padding:6px 0;}" +
             ".menu-category{border-top:1px solid rgba(255,255,255,.25);}" +
             ".menu-category:first-child{border-top:none;}" +
@@ -214,8 +223,11 @@ public class ProtocolBookHtmlWriter {
             ".main-content{margin-left:56px;min-height:100vh;padding:2.5rem;}" +
             ".protocol-view.welcome{color:#fff;text-align:center;padding-top:14vh;}" +
             ".protocol-view.welcome h1{font-size:2.2rem;margin-bottom:.5rem;}" +
+            ".welcome-logo{max-width:280px;max-height:120px;margin-bottom:1.5rem;}" +
             "section.protocol-view{background:#fff;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.25);padding:2rem 2.5rem;max-width:1100px;margin:0 auto;}" +
-            "section.protocol-view h2{color:var(--ahs-blue);border-bottom:3px solid var(--ahs-orange);padding-bottom:.4rem;margin-top:0;}" +
+            ".protocol-header{display:flex;align-items:center;gap:1rem;border-bottom:3px solid var(--ahs-orange);padding-bottom:.4rem;margin-bottom:1rem;}" +
+            ".protocol-logo{max-height:48px;max-width:160px;flex-shrink:0;}" +
+            "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
             ".meta,.dose{color:#555;font-size:.9rem;}" +
             ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
