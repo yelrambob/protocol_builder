@@ -43,12 +43,20 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains("Pad under the knee for comfort."), "manual scanning note must be rendered");
         assertTrue(html.contains("AXIAL KNEE DET 2.5MM"), "recon display name should still show up");
         // body parts present: lower/upper Extremities -> MSK, neck/spine -> Neuro, pelvis -> Body
-        assertTrue(html.contains("<summary>MSK"));
-        assertTrue(html.contains("<summary>Body"));
-        assertTrue(html.contains("<summary>Neuro"));
-        long groupCount = html.lines().filter(l -> l.contains("class=\"group\"")).count();
-        assertEquals(3, groupCount, "should be grouped into 3 reading categories, not one section per protocol-number prefix");
-        assertFalse(html.contains("<details class=\"group\" open>"), "categories should start collapsed");
+        long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
+        assertEquals(3, categoryCount, "should be grouped into 3 reading categories, not one section per protocol-number prefix");
+        assertTrue(html.contains(">MSK ("));
+        assertTrue(html.contains(">Body ("));
+        assertTrue(html.contains(">Neuro ("));
+
+        // every protocol section starts hidden; only the welcome view is visible until something is clicked
+        long hiddenSections = html.lines().filter(l -> l.contains("class=\"protocol-view\" style=\"display:none;\"")).count();
+        assertEquals(11, hiddenSections, "11 non-excluded protocols should each get their own hidden section (9.4 is excluded)");
+        assertTrue(html.contains("id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\""), "welcome view should be visible on load");
+
+        // sidebar links target the matching protocol section by id
+        assertTrue(html.contains("onclick=\"showProtocol('p-9-2'); return false;\""));
+        assertTrue(html.contains("<section id=\"p-9-2\" class=\"protocol-view\""));
     }
 
     @Test void scoutsRenderAsOneTableWithPlaneLabelsAndKernelsAreMapped(@TempDir Path tempDir) throws Exception {
