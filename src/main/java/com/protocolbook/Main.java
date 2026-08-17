@@ -1,5 +1,6 @@
 package com.protocolbook;
 
+import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.PediatricWeightSheetWriter;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
 import com.protocolbook.io.ProtocolJsonWriter;
@@ -29,11 +30,14 @@ import java.util.TreeSet;
 /**
  * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--logo <file>]
+ *             [--pdf-library <file>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
  * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, --logo to
- * ./logo.png, all only if present. --logo is embedded (base64) into the generated book, not linked.
+ * ./logo.png, --pdf-library to ./pdf-library.json, all only if present. --logo is embedded
+ * (base64) into the generated book; --pdf-library entries are linked (title+url pairs you
+ * maintain by hand - see PdfLibrary) since those files live on their own separate server.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -47,6 +51,7 @@ public class Main {
             File planeLabelsFile = new File("plane-labels.json");
             File categoryLabelsFile = new File("category-labels.json");
             File logoFile = new File("logo.png");
+            File pdfLibraryFile = new File("pdf-library.json");
             boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
@@ -57,6 +62,7 @@ public class Main {
                 else if ("--plane-labels".equals(args[i])) planeLabelsFile = new File(args[++i]);
                 else if ("--category-labels".equals(args[i])) categoryLabelsFile = new File(args[++i]);
                 else if ("--logo".equals(args[i])) logoFile = new File(args[++i]);
+                else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
                 else if ("--init-overrides".equals(args[i])) initOverrides = true;
                 else if ("--init-kernel-labels".equals(args[i])) initKernelLabels = true;
                 else if ("--init-plane-labels".equals(args[i])) initPlaneLabels = true;
@@ -112,10 +118,12 @@ public class Main {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
                 String logoDataUri = loadLogoDataUri(logoFile);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, htmlFile);
+                List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
+                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
-                        + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : ""));
+                        + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
+                        + (pdfLibrary.isEmpty() ? "" : " (" + pdfLibrary.size() + " PDF link(s) from " + pdfLibraryFile + ")"));
             }
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());

@@ -16,12 +16,16 @@ import java.util.*;
  * toggled by a small inline script (no external JS/CSS/fonts - everything is embedded so the
  * file works offline). Protocols flagged excluded in the overrides are left out entirely;
  * protocols with manual scanning notes show them inline.
+ * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
+ * its own top-level sidebar category, linking out with target="_blank" since those files live
+ * on a different server than wherever this book itself ends up hosted.
  */
 public class ProtocolBookHtmlWriter {
     // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
     private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
 
-    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, String logoDataUri, File outFile) throws IOException {
+    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, File outFile) throws IOException {
         Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
@@ -57,6 +61,17 @@ public class ProtocolBookHtmlWriter {
                         .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
                         .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
                         .append(HtmlSupport.esc(m == null ? null : m.getName())).append("</a></li>\n");
+            }
+            html.append("</ul>\n</li>\n");
+        }
+        if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
+                    .append("<span class=\"nav-icon\"><span>S</span></span>")
+                    .append("<span class=\"nav-text\">Surgical Planning Protocols (").append(pdfLibrary.size()).append(")</span></a>\n");
+            html.append("<ul class=\"submenu\">\n");
+            for (PdfLibrary.Entry entry : pdfLibrary) {
+                html.append("<li><a href=\"").append(HtmlSupport.esc(entry.url)).append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                        .append(HtmlSupport.esc(entry.title)).append("</a></li>\n");
             }
             html.append("</ul>\n</li>\n");
         }

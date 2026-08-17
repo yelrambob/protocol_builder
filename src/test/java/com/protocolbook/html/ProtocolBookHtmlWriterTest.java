@@ -34,7 +34,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>());
-        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // two different protocols share this name (9.4 lower-extremities and 8.2 pelvis); only 9.4 is excluded
@@ -67,7 +67,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mA</th>"), "scout series should render as a single Plane/kV/mA table");
@@ -84,7 +84,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
@@ -97,7 +97,7 @@ class ProtocolBookHtmlWriterTest {
         File out = tempDir.resolve("book.html").toFile();
         String logoDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<div class=\"menu-logo\"><img src=\"" + logoDataUri + "\""), "logo should appear at the top of the sidebar");
@@ -109,12 +109,40 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsLogoElementsWhenNoneProvided(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // CSS rules for these classes are always present (static styling); only the rendered <img>/<div> markup should be absent
         assertFalse(html.contains("<div class=\"menu-logo\">"));
         assertFalse(html.contains("<img class=\"welcome-logo\""));
         assertFalse(html.contains("<img class=\"protocol-logo\""));
+    }
+
+    @Test void rendersPdfLibraryAsItsOwnMenuCategoryLinkingExternally(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        List<PdfLibrary.Entry> pdfLibrary = List.of(
+                new PdfLibrary.Entry("Knee Replacement Planning Guide", "https://example.com/pdfs/knee-planning.pdf"),
+                new PdfLibrary.Entry("Hip Replacement Planning Guide", "https://example.com/pdfs/hip-planning.pdf"));
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, pdfLibrary, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
+        assertTrue(html.contains("<a href=\"https://example.com/pdfs/knee-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Knee Replacement Planning Guide</a>"));
+        assertTrue(html.contains("<a href=\"https://example.com/pdfs/hip-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Hip Replacement Planning Guide</a>"));
+        // 4 total: Neuro/Body/MSK reading categories + this new PDF library category
+        long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
+        assertEquals(4, categoryCount);
+    }
+
+    @Test void omitsPdfLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertFalse(html.contains("Surgical Planning Protocols"));
     }
 }
