@@ -205,7 +205,7 @@ public class ProtocolBookHtmlWriter {
             "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
             ".nav-text{display:inline-block;}" +
             ".submenu{display:none;background:rgba(0,0,0,.15);}" +
-            ".main-menu:hover .submenu,.menu-category.open .submenu{display:block;}" +
+            ".menu-category:hover .submenu,.menu-category.open .submenu{display:block;}" +
             ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
             "white-space:normal;border-top:1px solid rgba(255,255,255,.12);}" +
             ".submenu a:hover,.submenu a.active{background:var(--ahs-blue);}" +
