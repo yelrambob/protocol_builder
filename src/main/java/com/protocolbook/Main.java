@@ -31,7 +31,8 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Usage: Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
+ * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--recent-days <n, default 30>]
+ *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--detector-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
  *             [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
@@ -41,8 +42,11 @@ import java.util.TreeSet;
  * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json,
  * --detector-labels to ./detector-labels.json, --logo to ./logo.png, --pdf-library to
  * ./pdf-library.json, --manual-protocols to ./manual-protocols.json, all only if present. --logo
- * is embedded (base64) into the generated book; --pdf-library entries are linked (title+url pairs
- * you maintain by hand - see PdfLibrary) since those files live on their own separate server.
+ * is embedded (base64) into the generated book; --book-title sets the browser tab title and the
+ * welcome-page heading (defaults to "Protocol Book"); --recent-days controls the window (in days,
+ * off the scanner's own lastUpdatedDateTime) for the book's "Recent Changes" sidebar entry/table -
+ * 0 or negative disables it entirely; --pdf-library entries are linked (title+url
+ * pairs you maintain by hand - see PdfLibrary) since those files live on their own separate server.
  * --manual-protocols adds protocols that don't exist as a folder on the scanner (see
  * ManualProtocols) - merged in before every output, so they flow through --json/--html/
  * --peds-weights identically to scanner-discovered ones. --protocol-images-base points at
@@ -56,6 +60,8 @@ public class Main {
         try {
             File input = null;
             File jsonDir = null, htmlFile = null, pedsWeightFile = null;
+            String bookTitle = null;
+            int recentChangesDays = 30;
             File overridesFile = new File("protocol-overrides.json");
             File kernelLabelsFile = new File("kernel-labels.json");
             File planeLabelsFile = new File("plane-labels.json");
@@ -70,6 +76,8 @@ public class Main {
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
+                else if ("--book-title".equals(args[i])) bookTitle = args[++i];
+                else if ("--recent-days".equals(args[i])) recentChangesDays = Integer.parseInt(args[++i]);
                 else if ("--peds-weights".equals(args[i])) pedsWeightFile = new File(args[++i]);
                 else if ("--overrides".equals(args[i])) overridesFile = new File(args[++i]);
                 else if ("--kernel-labels".equals(args[i])) kernelLabelsFile = new File(args[++i]);
@@ -154,7 +162,7 @@ public class Main {
                 String logoDataUri = loadLogoDataUri(logoFile);
                 List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, htmlFile);
+                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, bookTitle, recentChangesDays, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")

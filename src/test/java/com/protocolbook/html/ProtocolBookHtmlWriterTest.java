@@ -34,7 +34,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
-        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // two different protocols share this name (9.4 lower-extremities and 8.2 pelvis); only 9.4 is excluded
@@ -76,7 +76,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>(), new HashMap<>()); // default plane labels apply
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mA</th>"), "scout series should render as a single Plane/kV/mA table");
@@ -93,7 +93,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
@@ -107,7 +107,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"), "the other 11 protocols should stay under Adult");
@@ -123,7 +123,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, overrides,
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">9.2 &mdash; Knee Protocol (Renamed)<"), "sidebar link should use the title override");
@@ -143,7 +143,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // the scout table (Plane/kV/mA) must never be preceded by a contrast paragraph
@@ -161,7 +161,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), detectorLabels);
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("Detector:"), "acquisition line should show the detector label when a code is present");
@@ -176,7 +176,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, overrides,
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<p class=\"destination\">Sends to: AHSPACS + 3D Lab</p>"), "send destination should be rendered on the protocol page");
@@ -187,7 +187,7 @@ class ProtocolBookHtmlWriterTest {
         File out = tempDir.resolve("book.html").toFile();
         String logoDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<div class=\"menu-logo\"><img src=\"" + logoDataUri + "\""), "logo should appear at the top of the sidebar");
@@ -199,7 +199,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsLogoElementsWhenNoneProvided(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // CSS rules for these classes are always present (static styling); only the rendered <img>/<div> markup should be absent
@@ -215,7 +215,7 @@ class ProtocolBookHtmlWriterTest {
                 new PdfLibrary.Entry("Knee Replacement Planning Guide", "https://example.com/pdfs/knee-planning.pdf"),
                 new PdfLibrary.Entry("Hip Replacement Planning Guide", "https://example.com/pdfs/hip-planning.pdf"));
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, pdfLibrary, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, pdfLibrary, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
@@ -230,7 +230,7 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("Surgical Planning Protocols"));
@@ -241,7 +241,7 @@ class ProtocolBookHtmlWriterTest {
         File out = tempDir.resolve("book.html").toFile();
         ProtocolImages images = new ProtocolImages("https://example.com/protocol-images", "png");
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, images, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, images, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<img class=\"protocol-image\" src=\"https://example.com/protocol-images/9.2.png\" "
@@ -254,9 +254,100 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("class=\"protocol-image\""));
+    }
+
+    @Test void customBookTitleSetsPageTitleAndWelcomeHeading(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, "AHS CT Protocols", 0, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("<title>AHS CT Protocols</title>"), "browser tab title should use the custom book title");
+        assertTrue(html.contains("<h1>AHS CT Protocols</h1>"), "welcome heading should use the custom book title");
+    }
+
+    @Test void blankBookTitleFallsBackToDefault(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("<title>Protocol Book</title>"));
+        assertTrue(html.contains("<h1>Protocol Book</h1>"));
+    }
+
+    @Test void sidebarSubmenusOnlyOpenOnClickNotHover(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertFalse(html.contains(":hover>.submenu"), "hovering must not by itself reveal any drill-down level's submenu");
+        assertTrue(html.contains(".menu-category.open>.submenu{display:block;}"));
+        assertTrue(html.contains(".menu-subcat.open>.submenu{display:block;}"));
+        assertTrue(html.contains(".menu-group.open>.submenu{display:block;}"));
+
+        // the rail's own collapsed/expanded width must also be click-driven, not hover-driven
+        assertFalse(html.contains(".main-menu:hover"), "the sidebar rail must not widen on hover either - only a click should expand it");
+        assertTrue(html.contains(".main-menu.expanded{width:340px;}"));
+        assertTrue(html.contains("menu.classList.toggle('expanded'"), "clicking a top-level entry should drive the rail's expanded state");
+    }
+
+    private static final java.time.format.DateTimeFormatter TIMESTAMP_FORMAT =
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxx");
+
+    @Test void recentChangesTableListsRecentlyUpdatedProtocolsMostRecentFirst(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        protocols.get(0).getMetadata().setLastUpdated(now.minusDays(1).format(TIMESTAMP_FORMAT)); // recent
+        protocols.get(1).getMetadata().setLastUpdated(now.minusDays(5).format(TIMESTAMP_FORMAT)); // recent, older than [0]
+        protocols.get(2).getMetadata().setLastUpdated(now.minusDays(90).format(TIMESTAMP_FORMAT)); // outside the window
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 30, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("Recent Changes (2)"), "sidebar should show a count of exactly the 2 protocols within the 30-day window");
+        assertTrue(html.contains("id=\"recent-changes\""), "a dedicated recent-changes section should be rendered");
+
+        int rowA = html.indexOf(protocols.get(0).getMetadata().getProtocolNumber(), html.indexOf("id=\"recent-changes\""));
+        int rowB = html.indexOf(protocols.get(1).getMetadata().getProtocolNumber(), html.indexOf("id=\"recent-changes\""));
+        assertTrue(rowA > 0 && rowB > 0 && rowA < rowB, "most recently updated protocol should be listed first");
+
+        String recentSection = html.substring(html.indexOf("id=\"recent-changes\""), html.indexOf("</table>", html.indexOf("id=\"recent-changes\"")));
+        assertFalse(recentSection.contains(">" + protocols.get(2).getMetadata().getProtocolNumber() + "<"),
+                "a protocol last updated 90 days ago should not appear in a 30-day recent-changes window");
+    }
+
+    @Test void recentChangesOmittedWhenDisabled(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        protocols.get(0).getMetadata().setLastUpdated(java.time.OffsetDateTime.now().format(TIMESTAMP_FORMAT));
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 0, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertFalse(html.contains("Recent Changes"), "recentChangesDays <= 0 must disable the feature even when a protocol was just updated");
+        assertFalse(html.contains("id=\"recent-changes\""));
+    }
+
+    @Test void recentChangesOmittedWhenNothingFallsWithinTheWindow(@TempDir Path tempDir) throws Exception {
+        // fixtures' real lastUpdatedDateTime values are all months old (2026-03/07) - a 1-day window should exclude all of them
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, null, 1, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertFalse(html.contains("Recent Changes"));
+        assertFalse(html.contains("id=\"recent-changes\""));
     }
 }

@@ -7,11 +7,15 @@ import com.protocolbook.overrides.ProtocolOverride;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * Renders the parsed protocols as a single self-contained HTML app: a hover-expandable sidebar
- * drilling down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
+ * Renders the parsed protocols as a single self-contained HTML app: a click-only sidebar (nothing
+ * opens or expands on hover - that was cumbersome to navigate with several nested drill-down
+ * levels; clicking a top-level entry both opens it and widens the collapsed icon rail) drilling
+ * down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
  * (Neuro/Body/MSK/Other, guessed from body part - see {@link LabelConfig#category}) -> a specific
  * group keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together)
  * and labeled with whichever GE body part is most common among its protocols -> individual
@@ -33,7 +37,10 @@ public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
-                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages, File outFile) throws IOException {
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
+                       String bookTitle, int recentChangesDays, File outFile) throws IOException {
+        String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
+        List<Protocol> recentlyChanged = recentlyChangedProtocols(protocols, overrides, recentChangesDays);
         // bucket (Adult/Pediatric) -> category (Neuro/Body/MSK/Other) -> group (protocol-number prefix) -> protocols
         Map<String, Map<String, Map<Integer, List<Protocol>>>> tree = new LinkedHashMap<String, Map<String, Map<Integer, List<Protocol>>>>();
         for (Protocol p : protocols) {
@@ -63,7 +70,7 @@ public class ProtocolBookHtmlWriter {
                         ids.put(p, protocolId(p, index++));
 
         StringBuilder html = new StringBuilder();
-        html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
+        html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
         html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n");
 
         html.append("<nav class=\"main-menu\">\n");
@@ -99,6 +106,11 @@ public class ProtocolBookHtmlWriter {
             }
             html.append("</ul>\n</li>\n");
         }
+        if (!recentlyChanged.isEmpty()) {
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
+                    .append("<span class=\"nav-icon\"><span>R</span></span>")
+                    .append("<span class=\"nav-text\">Recent Changes (").append(recentlyChanged.size()).append(")</span></a>\n</li>\n");
+        }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
                     .append("<span class=\"nav-icon\"><span>S</span></span>")
@@ -115,7 +127,8 @@ public class ProtocolBookHtmlWriter {
         html.append("<main class=\"main-content\">\n");
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
-        html.append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        if (!recentlyChanged.isEmpty()) appendRecentChanges(html, recentlyChanged, overrides, ids, recentChangesDays);
         for (String bucket : buckets)
             for (String category : sortedCategories(tree.get(bucket)))
                 for (Integer group : sortedGroups(tree.get(bucket).get(category)))
@@ -322,23 +335,70 @@ public class ProtocolBookHtmlWriter {
         } catch (Exception e) { return Double.MAX_VALUE; }
     }
 
+    // protocolmetadata.json's "lastUpdatedDateTime" - the scanner's own record of when a protocol was
+    // last saved, not anything this tool tracks itself. Same format ProtocolFolderWalker parses for dedup.
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxx");
+    private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
+
+    private static OffsetDateTime parseTimestamp(String value) {
+        if (value == null || value.isEmpty()) return null;
+        try { return OffsetDateTime.parse(value, TIMESTAMP_FORMAT); }
+        catch (Exception e) { return null; }
+    }
+
+    // Protocols (not excluded) whose scanner lastUpdatedDateTime falls within the last N days,
+    // most-recently-changed first. recentChangesDays <= 0 disables the feature entirely (no
+    // window to check against, and no "Recent Changes" entry shows up in the sidebar).
+    private List<Protocol> recentlyChangedProtocols(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, int recentChangesDays) {
+        if (recentChangesDays <= 0) return Collections.emptyList();
+        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(recentChangesDays);
+        List<Protocol> recent = new ArrayList<Protocol>();
+        for (Protocol p : protocols) {
+            if (isExcluded(p, overrides)) continue;
+            OffsetDateTime updated = parseTimestamp(p.getMetadata() == null ? null : p.getMetadata().getLastUpdated());
+            if (updated != null && updated.isAfter(cutoff)) recent.add(p);
+        }
+        recent.sort((a, b) -> parseTimestamp(b.getMetadata().getLastUpdated()).compareTo(parseTimestamp(a.getMetadata().getLastUpdated())));
+        return recent;
+    }
+
+    private void appendRecentChanges(StringBuilder html, List<Protocol> recentlyChanged, Map<String, ProtocolOverride> overrides,
+                                      Map<Protocol, String> ids, int recentChangesDays) {
+        html.append("<section id=\"recent-changes\" class=\"protocol-view\" style=\"display:none;\">\n");
+        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Protocols updated on the scanner in the last ")
+                .append(recentChangesDays).append(" days.</p>\n");
+        html.append("<table>\n<tr><th>Protocol</th><th>Name</th><th>Body Part</th><th>Last Updated</th></tr>\n");
+        for (Protocol p : recentlyChanged) {
+            Metadata m = p.getMetadata();
+            String id = ids.get(p);
+            OffsetDateTime updated = parseTimestamp(m.getLastUpdated());
+            html.append("<tr><td><a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                    .append(HtmlSupport.esc(m.getProtocolNumber())).append("</a></td><td>")
+                    .append(HtmlSupport.esc(displayName(p, overrides))).append("</td><td>")
+                    .append(HtmlSupport.esc(m.getBodyPart())).append("</td><td>")
+                    .append(updated == null ? "" : DISPLAY_DATE_FORMAT.format(updated)).append("</td></tr>\n");
+        }
+        html.append("</table>\n</section>\n");
+    }
+
     // Best-effort Atlantic Health System palette (menu orange, main panel blue) - not sourced from an
     // official brand guide, so swap these hex values if AHS's real brand colors differ.
     private static final String CSS =
-            ":root{--ahs-blue:#003057;--ahs-blue-accent:#0072ce;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
+            ":root{--ahs-blue:#044281;--ahs-blue-accent:#044281;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
             "*{box-sizing:border-box;}" +
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
-            // Sidebar - collapsed to an icon rail, hover (or click, for touchscreens) expands it.
-            // Three drill-down levels share the same open/hover mechanic (see toggleMenu in JS):
+            // Sidebar - collapsed to an icon rail; every level, including the rail's own width, only
+            // reacts to clicks (see toggleMenu in JS), never hover - hover-driven opening/widening was
+            // cumbersome to navigate once there were three nested drill-down levels.
             // menu-category (Adult/Pediatric/PDF library) -> menu-subcat (Neuro/Body/MSK/Other) -> menu-group (specific body part).
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
-            ".main-menu:hover,.main-menu.expanded{width:340px;}" +
+            ".main-menu.expanded{width:340px;}" +
             ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
             ".menu-logo img{max-width:44px;max-height:44px;}" +
-            ".main-menu:hover .menu-logo img,.main-menu.expanded .menu-logo img{max-width:220px;}" +
+            ".main-menu.expanded .menu-logo img{max-width:220px;}" +
             ".main-menu ul{list-style:none;margin:0;padding:6px 0;}" +
             ".menu-category{border-top:1px solid rgba(255,255,255,.25);}" +
             ".menu-category:first-child{border-top:none;}" +
@@ -349,19 +409,19 @@ public class ProtocolBookHtmlWriter {
             "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
             ".nav-text{display:inline-block;}" +
             ".submenu{display:none;background:rgba(0,0,0,.15);}" +
-            ".menu-category:hover>.submenu,.menu-category.open>.submenu{display:block;}" +
+            ".menu-category.open>.submenu{display:block;}" +
 
             ".menu-subcat{border-top:1px solid rgba(255,255,255,.15);}" +
             ".subcat-link{display:block;padding:10px 14px 10px 56px;color:#fff;text-decoration:none;font-weight:600;font-size:14px;" +
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.08);}" +
             ".subcat-link:hover,.menu-subcat.open>.subcat-link{background:var(--ahs-orange-dark);}" +
-            ".menu-subcat:hover>.submenu,.menu-subcat.open>.submenu{display:block;}" +
+            ".menu-subcat.open>.submenu{display:block;}" +
 
             ".menu-group{border-top:1px solid rgba(255,255,255,.10);}" +
             ".group-link{display:block;padding:9px 14px 9px 72px;color:#fff;text-decoration:none;font-weight:500;font-size:13px;" +
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.16);}" +
             ".group-link:hover,.menu-group.open>.group-link{background:var(--ahs-orange-dark);}" +
-            ".menu-group:hover>.submenu,.menu-group.open>.submenu{display:block;}" +
+            ".menu-group.open>.submenu{display:block;}" +
             ".menu-group>.submenu a{padding-left:88px;}" +
 
             ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
@@ -399,8 +459,13 @@ public class ProtocolBookHtmlWriter {
             "window.scrollTo(0,0);}" +
             // Generic drill-down toggle shared by every sidebar level (menu-category/menu-subcat/menu-group):
             // opens the clicked node and closes its siblings at the same level, leaving ancestor/descendant levels alone.
+            // Nothing here reacts to hover - the sidebar is entirely click-driven, including its own
+            // collapsed/expanded width, which now follows whether a top-level item is open, not the mouse.
             "function toggleMenu(el){" +
             "var li=el.parentElement;var siblingsUl=li.parentElement;var wasOpen=li.classList.contains('open');" +
             "Array.prototype.forEach.call(siblingsUl.children,function(sib){sib.classList.remove('open');});" +
-            "if(!wasOpen)li.classList.add('open');return false;}";
+            "if(!wasOpen)li.classList.add('open');" +
+            "if(li.classList.contains('menu-category')){" +
+            "var menu=li.closest('.main-menu');if(menu)menu.classList.toggle('expanded',!wasOpen);}" +
+            "return false;}";
 }
