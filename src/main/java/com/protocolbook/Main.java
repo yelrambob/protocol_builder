@@ -33,25 +33,27 @@ import java.util.TreeSet;
 /**
  * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--recent-days <n, default 30>]
  *             [--peds-weights <file>] [--overrides <file>]
- *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--detector-labels <file>]
+ *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
  *             [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
- *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels] [--init-detector-labels]
+ *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
- * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json,
- * --detector-labels to ./detector-labels.json, --logo to ./logo.png, --pdf-library to
- * ./pdf-library.json, --manual-protocols to ./manual-protocols.json, all only if present. --logo
- * is embedded (base64) into the generated book; --book-title sets the browser tab title and the
- * welcome-page heading (defaults to "Protocol Book"); --recent-days controls the window (in days,
- * off the scanner's own lastUpdatedDateTime) for the book's "Recent Changes" sidebar entry/table -
- * 0 or negative disables it entirely; --pdf-library entries are linked (title+url
- * pairs you maintain by hand - see PdfLibrary) since those files live on their own separate server.
- * --manual-protocols adds protocols that don't exist as a folder on the scanner (see
- * ManualProtocols) - merged in before every output, so they flow through --json/--html/
- * --peds-weights identically to scanner-discovered ones. --protocol-images-base points at
- * wherever per-protocol reference images are hosted, named "<protocolNumber>.<ext>" - no list to
- * maintain, see ProtocolImages.
+ * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, --logo to
+ * ./logo.png, --pdf-library to ./pdf-library.json, --manual-protocols to ./manual-protocols.json,
+ * all only if present. --logo is embedded (base64) into the generated book; --book-title sets the
+ * browser tab title and the welcome-page heading (defaults to "Protocol Book"); --recent-days
+ * controls the window (in days, off the scanner's own lastUpdatedDateTime) for the book's "Recent
+ * Changes" sidebar entry/table - 0 or negative disables it entirely; --pdf-library entries are
+ * linked (title+url pairs you maintain by hand - see PdfLibrary) since those files live on their
+ * own separate server. --category-labels maps a protocol number's whole-number prefix (1-9) to a
+ * reading category, matching the scanner console's own numbering (1 Head, 2 Face, ... 9 Lower
+ * Ext. by default - see LabelConfig) - a prefix with no mapping (e.g. 10, QA/phantom protocols)
+ * is left out of the generated book entirely. --manual-protocols adds protocols that don't exist
+ * as a folder on the scanner (see ManualProtocols) - merged in before every output, so they flow
+ * through --json/--html/--peds-weights identically to scanner-discovered ones.
+ * --protocol-images-base points at wherever per-protocol reference images are hosted, named
+ * "<protocolNumber>.<ext>" - no list to maintain, see ProtocolImages.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -66,13 +68,11 @@ public class Main {
             File kernelLabelsFile = new File("kernel-labels.json");
             File planeLabelsFile = new File("plane-labels.json");
             File categoryLabelsFile = new File("category-labels.json");
-            File detectorLabelsFile = new File("detector-labels.json");
             File logoFile = new File("logo.png");
             File pdfLibraryFile = new File("pdf-library.json");
             File manualProtocolsFile = new File("manual-protocols.json");
             String protocolImagesBase = null, protocolImagesExt = "png";
-            boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false,
-                    initCategoryLabels = false, initDetectorLabels = false;
+            boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
@@ -83,7 +83,6 @@ public class Main {
                 else if ("--kernel-labels".equals(args[i])) kernelLabelsFile = new File(args[++i]);
                 else if ("--plane-labels".equals(args[i])) planeLabelsFile = new File(args[++i]);
                 else if ("--category-labels".equals(args[i])) categoryLabelsFile = new File(args[++i]);
-                else if ("--detector-labels".equals(args[i])) detectorLabelsFile = new File(args[++i]);
                 else if ("--logo".equals(args[i])) logoFile = new File(args[++i]);
                 else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
                 else if ("--manual-protocols".equals(args[i])) manualProtocolsFile = new File(args[++i]);
@@ -93,7 +92,6 @@ public class Main {
                 else if ("--init-kernel-labels".equals(args[i])) initKernelLabels = true;
                 else if ("--init-plane-labels".equals(args[i])) initPlaneLabels = true;
                 else if ("--init-category-labels".equals(args[i])) initCategoryLabels = true;
-                else if ("--init-detector-labels".equals(args[i])) initDetectorLabels = true;
                 else if (input == null) input = new File(args[i]);
             }
             if (input == null) input = new File("Protocols.xlsm");
@@ -132,21 +130,18 @@ public class Main {
                         + " new code(s) (0/90/180/270 already default to AP/Lateral/PA/Lateral unless overridden here)");
             }
             if (initCategoryLabels) {
-                TreeSet<String> bodyParts = new TreeSet<String>();
+                TreeSet<Integer> prefixes = new TreeSet<Integer>();
                 for (Protocol p : protocols) {
                     Metadata m = p.getMetadata();
-                    if (m != null && m.getBodyPart() != null && !m.getBodyPart().isEmpty()) bodyParts.add(m.getBodyPart());
+                    if (m == null || m.getProtocolNumber() == null) continue;
+                    try { prefixes.add(Integer.parseInt(m.getProtocolNumber().split("\\.")[0])); } catch (Exception ignored) {}
                 }
-                int added = CodeLabels.mergeTemplate(new ArrayList<String>(bodyParts), categoryLabelsFile);
+                List<String> prefixStrings = new ArrayList<String>();
+                for (Integer prefix : prefixes) prefixStrings.add(String.valueOf(prefix));
+                int added = CodeLabels.mergeTemplate(prefixStrings, categoryLabelsFile);
                 System.out.println("Category labels file " + categoryLabelsFile.getAbsolutePath() + ": added " + added
-                        + " new body part(s) - leave blank to keep the guessed category (Neuro/Body/MSK/Other), fill in only to override it");
-            }
-            if (initDetectorLabels) {
-                int added = CodeLabels.mergeTemplate(new ArrayList<String>(collectDetectorCodes(protocols)), detectorLabelsFile);
-                System.out.println("Detector labels file " + detectorLabelsFile.getAbsolutePath() + ": added " + added
-                        + " new code(s) - fill in the \"\" values (e.g. \"64 slice\", \"128 slice/80mm\") from the scanner console");
-                printBlankCodeSamples(detectorLabelsFile, sampleProtocolNamesByDetectorCode(protocols),
-                        "protocol/series using it, to help identify it");
+                        + " new protocol-number prefix(es) - 1-9 already default to Head/Face/Neck/Upper Ext./Chest/ABD-PEL/Spine/Pelvis/Lower Ext. "
+                        + "unless overridden here; any prefix left blank/unmapped (e.g. 10) is left out of the generated book entirely");
             }
             if (pedsWeightFile != null) {
                 new PediatricWeightSheetWriter().write(protocols, pedsWeightFile);
@@ -158,7 +153,7 @@ public class Main {
             }
             if (htmlFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
-                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile, detectorLabelsFile);
+                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
                 String logoDataUri = loadLogoDataUri(logoFile);
                 List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
@@ -203,15 +198,6 @@ public class Main {
         return codes;
     }
 
-    private static TreeSet<String> collectDetectorCodes(List<Protocol> protocols) {
-        TreeSet<String> codes = new TreeSet<String>();
-        for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups()) {
-            String code = g.getAcquisition().getDetector();
-            if (code != null && !code.isEmpty()) codes.add(code);
-        }
-        return codes;
-    }
-
     private static final int MAX_SAMPLES_PER_CODE = 5;
 
     private static Map<String, List<String>> sampleReconNamesByKernelCode(List<Protocol> protocols) {
@@ -226,23 +212,10 @@ public class Main {
         return samples;
     }
 
-    private static Map<String, List<String>> sampleProtocolNamesByDetectorCode(List<Protocol> protocols) {
-        Map<String, List<String>> samples = new LinkedHashMap<String, List<String>>();
-        for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups()) {
-            String code = g.getAcquisition().getDetector();
-            String protocolName = p.getMetadata() == null ? null : p.getMetadata().getName();
-            if (code == null || code.isEmpty() || protocolName == null) continue;
-            String entry = protocolName + " (series " + s.getNumber() + ")";
-            List<String> names = samples.computeIfAbsent(code, k -> new ArrayList<String>());
-            if (!names.contains(entry) && names.size() < MAX_SAMPLES_PER_CODE) names.add(entry);
-        }
-        return samples;
-    }
-
-    // The whole reason kernel/detector codes need a hand-maintained labels file is that the raw
-    // export gives no clue what a code means - so when --init-*-labels finds a code with no label
-    // yet, print a few real names that used it, letting the reader recognize it (e.g. "BONE+" in
-    // the name) instead of having to go stand at the scanner console to look it up.
+    // The whole reason kernel codes need a hand-maintained labels file is that the raw export
+    // gives no clue what a code means - so when --init-kernel-labels finds a code with no label
+    // yet, print a few real recon names that used it, letting the reader recognize it (e.g.
+    // "BONE+" in the name) instead of having to go stand at the scanner console to look it up.
     private static void printBlankCodeSamples(File labelsFile, Map<String, List<String>> samplesByCode, String hint) throws java.io.IOException {
         Map<String, String> labels = CodeLabels.load(labelsFile);
         for (Map.Entry<String, String> e : labels.entrySet()) {

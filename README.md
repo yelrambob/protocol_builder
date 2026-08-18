@@ -2,7 +2,7 @@
 
 A Java command-line tool that turns CT scanning protocols exported from a GE scanner into a single browsable "protocol book" (HTML), plus normalized JSON. It reads either of two GE export formats, fills a typed model (kV, mA, pitch, kernel, dose, contrast, reconstructions, etc.), and keeps anything it doesn't recognize instead of dropping it.
 
-- **Recognized fields** (protocol name, body part, kV, mA, pitch, detector, dose, series, reconstructions, contrast, ...) populate a typed model.
+- **Recognized fields** (protocol name, body part, kV, mA, pitch, dose, series, reconstructions, contrast, ...) populate a typed model.
 - **Everything else** — free-text notes/comments and any workbook or XML field the parser doesn't have a slot for — is retained verbatim in `Protocol.notes` and `Protocol.advanced` rather than silently discarded.
 
 ## What it reads
@@ -75,10 +75,10 @@ gradlew.bat run --args="protocols.xlsm --html book.html"
 
 ```
 Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
-             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>] [--detector-labels <file>]
+             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
              [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
              [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
-             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels] [--init-detector-labels]
+             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
 ```
 
 Because this is a Gradle `application` project, every invocation goes through `./gradlew run --args="..."` — put the whole argument string in one quoted `--args` value, exactly as shown below.
@@ -94,8 +94,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--overrides <file>` | Path to the hand-maintained overrides JSON (notes, exclusions, send destinations). Defaults to `./protocol-overrides.json`; used only if the file exists. Only takes effect together with `--html`. |
 | `--kernel-labels <file>` | Path to the recon-kernel-code → label lookup. Defaults to `./kernel-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--plane-labels <file>` | Path to the scout-plane-angle → label lookup. Defaults to `./plane-labels.json`; used only if present. Only takes effect together with `--html`. |
-| `--category-labels <file>` | Path to the body-part → reading-category (Neuro/Body/MSK/Other) override lookup. Defaults to `./category-labels.json`; used only if present. Only takes effect together with `--html`. |
-| `--detector-labels <file>` | Path to the detector-row-code → label lookup. Defaults to `./detector-labels.json`; used only if present. Only takes effect together with `--html`. |
+| `--category-labels <file>` | Path to the protocol-number-prefix (1-9) → reading-category override lookup. Defaults to `./category-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--logo <file>` | Image (PNG/JPG/GIF/SVG) embedded as a base64 data URI at the top of the sidebar, the welcome view, and every protocol page. Defaults to `./logo.png`; used only if present. Only takes effect together with `--html`. |
 | `--pdf-library <file>` | Path to the hand-maintained list of externally hosted PDFs (title+url pairs) shown as their own "Surgical Planning Protocols" sidebar category. Defaults to `./pdf-library.json`; used only if present. Only takes effect together with `--html`. |
 | `--manual-protocols <file>` | Path to hand-authored protocols that don't exist as a folder on the scanner. Defaults to `./manual-protocols.json`; used only if present. Merged in before every output (`--json`/`--html`/`--peds-weights`), not just `--html`. |
@@ -104,10 +103,9 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed. Never touches existing entries. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
-| `--init-category-labels` | Add an empty entry to the category-labels file for every distinct body part found that isn't already listed. |
-| `--init-detector-labels` | Add an empty entry to the detector-labels file for every detector code found that isn't already listed. |
+| `--init-category-labels` | Add an entry to the category-labels file for every distinct protocol-number prefix found that isn't already listed. |
 
-All five `--init-*` flags, and `--json`/`--html`/`--peds-weights`, can be combined in a single run alongside one another. Every run always prints the console summary described below regardless of which other flags are passed.
+All four `--init-*` flags, and `--json`/`--html`/`--peds-weights`, can be combined in a single run alongside one another. Every run always prints the console summary described below regardless of which other flags are passed.
 
 Every run first prints a one-line-per-protocol console summary:
 
@@ -141,7 +139,7 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 
 `--init-overrides` scaffolds every protocol number here with all four fields blank, so renaming or excluding a protocol is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
-### `kernel-labels.json`, `plane-labels.json`, `category-labels.json`, `detector-labels.json` — code → label lookups
+### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 
 Each is a flat `{ "code": "label" }` map:
 
@@ -151,11 +149,10 @@ Each is a flat `{ "code": "label" }` map:
 
 - **`kernel-labels.json`** maps each recon kernel number to its scanner-console name (e.g. `"STD"`, `"DTL"`, `"BN"`, `"BN+"`). There is no default — every code starts blank until you fill it in.
 - **`plane-labels.json`** maps scout plane angles to names. It only needs entries for angles you want to *override* — `0`/`90`/`180`/`270` already default to AP/Lateral/PA/Lateral built into the tool; leave a code out (or blank) to keep that default.
-- **`category-labels.json`** maps an exact body-part string to the reading category it should sort under in the sidebar. It only needs entries for body parts you want to *override* — the tool already keyword-guesses Neuro/Body/MSK/Other from the body part (head/orbit/sinus/brain/face/spine/neck/cervical → Neuro, chest/abdomen/pelvis/cardiac → Body, anything with "extremit" → MSK, else Other); leave an entry blank to keep the guessed category.
-- **`detector-labels.json`** maps the detector row count (GE's `macroRowNumber`) to a description (e.g. `"64 slice"`, `"128 slice/80mm"`).
-- Any code with a missing or empty label falls back to showing the raw code (or the keyword-guessed category) in the HTML book, so nothing is ever silently hidden.
+- **`category-labels.json`** maps a protocol number's whole-number prefix (as a string, e.g. `"9"`) to the reading category it sorts under in the sidebar. It only needs entries for prefixes you want to *override* — the tool already defaults to the scanner console's own numbering: `1` Head, `2` Face, `3` Neck, `4` Upper Ext., `5` Chest, `6` ABD/PEL, `7` Spine, `8` Pelvis, `9` Lower Ext. **A prefix with no mapping at all (nothing in this file and no built-in default — in particular `10`, GE's QA/phantom protocols) is left out of the generated book entirely, not dumped into a catch-all.** If you need a prefix beyond 1-9 included, add it here with the label you want.
+- Any kernel/plane code with a missing or empty label falls back to showing the raw code in the HTML book, so nothing there is ever silently hidden — category prefixes are the one exception, by design (see above).
 
-All four are only used when `--html` is passed.
+All three are only used when `--html` is passed.
 
 ### `logo.png`, `pdf-library.json`, `manual-protocols.json`, protocol images — optional extras for the HTML book
 
@@ -181,10 +178,10 @@ All four are only used when `--html` is passed.
 Run once against your real export data to seed each file with every code/protocol number actually in use, with blank values ready to fill in:
 
 ```bash
-./gradlew run --args="'/path/to/ExportedProtocolsFolder' --init-overrides --init-kernel-labels --init-plane-labels --init-category-labels --init-detector-labels"
+./gradlew run --args="'/path/to/ExportedProtocolsFolder' --init-overrides --init-kernel-labels --init-plane-labels --init-category-labels"
 ```
 
-This is safe to re-run any time (e.g. after new protocols show up on the scanner) — it only **adds** new codes/protocol numbers and never overwrites or removes anything you've already filled in. For `--init-kernel-labels` and `--init-detector-labels`, the console also prints a few real protocol/recon names that used each still-blank code, so you can recognize it without having to go stand at the scanner console:
+This is safe to re-run any time (e.g. after new protocols show up on the scanner) — it only **adds** new codes/protocol numbers and never overwrites or removes anything you've already filled in. For `--init-kernel-labels`, the console also prints a few real recon names that used each still-blank code, so you can recognize it without having to go stand at the scanner console:
 
 ```
 Kernel labels file kernel-labels.json: added 3 new code(s) - fill in the "" values (e.g. "STD", "DTL", "BN", "BN+") from the scanner console
@@ -207,16 +204,15 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
 `--html <file>` renders every parsed protocol into a single self-contained, browsable HTML app (no external CSS/JS/font/CDN dependencies — it works fully offline) at `<file>`, styled in Atlantic Health System's colors (orange sidebar, blue main content — a best-effort approximation, not sourced from an official brand guide):
 
-- A **sidebar**, collapsed to a 56px icon rail by default. Nothing in it reacts to hover — clicking a top-level entry both opens it and widens the rail so labels are readable (hover-driven opening/widening got cumbersome once there were several nested levels to navigate). It drills down three levels, each starting collapsed until you click it open:
+- A **sidebar**, collapsed to a 56px icon rail by default. Nothing in it reacts to hover — clicking a top-level entry both opens it and widens the rail so labels are readable. It drills down two levels, each starting collapsed until you click it open:
   1. **Adult** / **Pediatric** — split from each protocol's patient type.
-  2. **Neuro** / **Body** / **MSK** / **Other** — the reading category guessed from body part (overridable per body part via `category-labels.json`).
-  3. A **specific group** keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together) and labeled with whichever GE body part (`anatomyRegion`) is most common among its protocols — so "Chest" and "Abd/Pel" naturally end up as separate groups under Body instead of one lumped-together section.
+  2. A **reading category** keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together) and labeled to match the scanner console's own numbering, not a guess — `1` Head, `2` Face, `3` Neck, `4` Upper Ext., `5` Chest, `6` ABD/PEL, `7` Spine, `8` Pelvis, `9` Lower Ext. by default (overridable via `category-labels.json`). **A prefix with no category mapping (by default anything outside 1-9, in particular `10.x` QA/phantom protocols) is left out of the book entirely** — no manual exclusion needed.
 
   An optional **Recent Changes** entry (top-level, alongside Adult/Pediatric) links directly to a table of protocols whose scanner `lastUpdatedDateTime` falls within the last `--recent-days` days (default 30), most-recently-changed first, each row linking straight to that protocol's page. Omitted entirely when nothing qualifies or `--recent-days` is `0`/negative.
 
   An optional **Surgical Planning Protocols** entry also sits alongside Adult/Pediatric, listing any externally hosted PDFs from `pdf-library.json`.
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
-- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show any IV contrast volume/injection rate under the series name, then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, rotation time, detector, and dose per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
+- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show any IV contrast volume/injection rate under the series name, then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, and rotation time per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
 - Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.
 - Printing (browser print / print-to-PDF) hides the sidebar and expands the protocol card to the full page width.
 
@@ -233,7 +229,6 @@ Thin wrappers around the Gradle invocations above, for people who'd rather doubl
 | `init-kernel-labels.sh` / `.bat` `[input]` | `--init-kernel-labels` |
 | `init-plane-labels.sh` / `.bat` `[input]` | `--init-plane-labels` |
 | `init-category-labels.sh` / `.bat` `[input]` | `--init-category-labels` |
-| `init-detector-labels.sh` / `.bat` `[input]` | `--init-detector-labels` |
 | `pediatric-weight-sheet.sh` / `.bat` `[input]` | `--peds-weights peds-weights.html` |
 
 Example:
@@ -261,11 +256,11 @@ src/main/java/com/protocolbook/
     UIRxProtocolParser.java       Parses one export folder's protocolmetadata.json/UIRx.xml/session.xml
     ParseSupport.java             Shared tolerant numeric parsing and "advanced" field bookkeeping
   overrides/                      ProtocolOverride model + load/mergeTemplate for protocol-overrides.json
-  labels/                         CodeLabels (generic code->label file) + LabelConfig (kernel/plane/category/detector)
+  labels/                         CodeLabels (generic code->label file) + LabelConfig (kernel/plane/category)
   manual/ManualProtocols.java     Loads/merges hand-authored protocols not present on the scanner
   io/ProtocolJsonWriter.java      --json output
   html/
-    ProtocolBookHtmlWriter.java   --html output (AHS-themed hover-sidebar single-page app)
+    ProtocolBookHtmlWriter.java   --html output (AHS-themed click-only-sidebar single-page app)
     HtmlSupport.java              Shared HTML escaping/CSS used by both HTML writers
     PdfLibrary.java                --pdf-library loading
     ProtocolImages.java           --protocol-images-base URL convention
