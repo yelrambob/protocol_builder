@@ -11,13 +11,17 @@ import java.util.*;
 
 /**
  * Renders the parsed protocols as a single self-contained HTML app: a hover-expandable sidebar
- * grouped by reading category (Neuro/Body/MSK/Other, guessed from body part - see
- * {@link LabelConfig#category}), and a main panel that shows exactly one protocol at a time,
- * toggled by a small inline script (no external JS/CSS/fonts - everything is embedded so the
- * file works offline). Protocols flagged excluded in the overrides are left out entirely;
- * protocols with manual scanning notes/send destination show them inline.
+ * drilling down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
+ * (Neuro/Body/MSK/Other, guessed from body part - see {@link LabelConfig#category}) -> a specific
+ * group keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together)
+ * and labeled with whichever GE body part is most common among its protocols -> individual
+ * protocols. A main panel shows exactly one protocol at a time, toggled by a small inline script
+ * (no external JS/CSS/fonts - everything is embedded so the file works offline). Protocols
+ * flagged excluded in the overrides are left out entirely; a protocol with a "title" override
+ * displays under that name instead of its scanner name, and manual scanning notes/send
+ * destination show inline.
  * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
- * its own top-level sidebar category, linking out with target="_blank" since those files live
+ * its own top-level sidebar entry, linking out with target="_blank" since those files live
  * on a different server than wherever this book itself ends up hosted.
  * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
  * convention (protocol number -> filename) rather than a maintained list; the <img> hides
@@ -26,23 +30,37 @@ import java.util.*;
 public class ProtocolBookHtmlWriter {
     // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
     private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
+    private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages, File outFile) throws IOException {
-        Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
+        // bucket (Adult/Pediatric) -> category (Neuro/Body/MSK/Other) -> group (protocol-number prefix) -> protocols
+        Map<String, Map<String, Map<Integer, List<Protocol>>>> tree = new LinkedHashMap<String, Map<String, Map<Integer, List<Protocol>>>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
+            String bucket = patientBucket(p);
             String category = labels.category(p.getMetadata() == null ? null : p.getMetadata().getBodyPart());
-            groups.computeIfAbsent(category, k -> new ArrayList<Protocol>()).add(p);
+            int group = groupKey(p);
+            tree.computeIfAbsent(bucket, k -> new LinkedHashMap<String, Map<Integer, List<Protocol>>>())
+                    .computeIfAbsent(category, k -> new LinkedHashMap<Integer, List<Protocol>>())
+                    .computeIfAbsent(group, k -> new ArrayList<Protocol>())
+                    .add(p);
         }
-        for (List<Protocol> group : groups.values()) group.sort(Comparator.comparingDouble(this::sortKey));
+        for (Map<String, Map<Integer, List<Protocol>>> byCategory : tree.values())
+            for (Map<Integer, List<Protocol>> byGroup : byCategory.values())
+                for (List<Protocol> group : byGroup.values())
+                    group.sort(Comparator.comparingDouble(this::sortKey));
 
-        List<String> categories = new ArrayList<String>(groups.keySet());
-        categories.sort(Comparator.comparingInt(this::categoryRank).thenComparing(Comparator.naturalOrder()));
+        List<String> buckets = new ArrayList<String>(tree.keySet());
+        buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
 
         Map<Protocol, String> ids = new IdentityHashMap<Protocol, String>();
         int index = 0;
-        for (String category : categories) for (Protocol p : groups.get(category)) ids.put(p, protocolId(p, index++));
+        for (String bucket : buckets)
+            for (String category : sortedCategories(tree.get(bucket)))
+                for (Integer group : sortedGroups(tree.get(bucket).get(category)))
+                    for (Protocol p : tree.get(bucket).get(category).get(group))
+                        ids.put(p, protocolId(p, index++));
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
@@ -51,24 +69,38 @@ public class ProtocolBookHtmlWriter {
         html.append("<nav class=\"main-menu\">\n");
         if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
         html.append("<ul>\n");
-        for (String category : categories) {
-            List<Protocol> group = groups.get(category);
-            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
-                    .append("<span class=\"nav-icon\">").append(categoryInitial(category)).append("</span>")
-                    .append("<span class=\"nav-text\">").append(HtmlSupport.esc(category)).append(" (").append(group.size()).append(")</span></a>\n");
+        for (String bucket : buckets) {
+            Map<String, Map<Integer, List<Protocol>>> byCategory = tree.get(bucket);
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
+                    .append("<span class=\"nav-icon\">").append(categoryInitial(bucket)).append("</span>")
+                    .append("<span class=\"nav-text\">").append(HtmlSupport.esc(bucket)).append(" (").append(bucketCount(byCategory)).append(")</span></a>\n");
             html.append("<ul class=\"submenu\">\n");
-            for (Protocol p : group) {
-                String id = ids.get(p);
-                Metadata m = p.getMetadata();
-                html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
-                        .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
-                        .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
-                        .append(HtmlSupport.esc(m == null ? null : m.getName())).append("</a></li>\n");
+            for (String category : sortedCategories(byCategory)) {
+                Map<Integer, List<Protocol>> byGroup = byCategory.get(category);
+                html.append("<li class=\"menu-subcat\">\n<a href=\"#\" class=\"subcat-link\" onclick=\"return toggleMenu(this);\">")
+                        .append(HtmlSupport.esc(category)).append(" (").append(categoryCount(byGroup)).append(")</a>\n");
+                html.append("<ul class=\"submenu\">\n");
+                for (Integer group : sortedGroups(byGroup)) {
+                    List<Protocol> groupProtocols = byGroup.get(group);
+                    html.append("<li class=\"menu-group\">\n<a href=\"#\" class=\"group-link\" onclick=\"return toggleMenu(this);\">")
+                            .append(HtmlSupport.esc(groupLabel(group, groupProtocols))).append(" (").append(groupProtocols.size()).append(")</a>\n");
+                    html.append("<ul class=\"submenu\">\n");
+                    for (Protocol p : groupProtocols) {
+                        String id = ids.get(p);
+                        Metadata m = p.getMetadata();
+                        html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
+                                .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                                .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
+                                .append(HtmlSupport.esc(displayName(p, overrides))).append("</a></li>\n");
+                    }
+                    html.append("</ul>\n</li>\n");
+                }
+                html.append("</ul>\n</li>\n");
             }
             html.append("</ul>\n</li>\n");
         }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
-            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
                     .append("<span class=\"nav-icon\"><span>S</span></span>")
                     .append("<span class=\"nav-text\">Surgical Planning Protocols (").append(pdfLibrary.size()).append(")</span></a>\n");
             html.append("<ul class=\"submenu\">\n");
@@ -84,13 +116,14 @@ public class ProtocolBookHtmlWriter {
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
-        for (String category : categories) {
-            for (Protocol p : groups.get(category)) {
-                html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
-                appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
-                html.append("</section>\n");
-            }
-        }
+        for (String bucket : buckets)
+            for (String category : sortedCategories(tree.get(bucket)))
+                for (Integer group : sortedGroups(tree.get(bucket).get(category)))
+                    for (Protocol p : tree.get(bucket).get(category).get(group)) {
+                        html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
+                        appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
+                        html.append("</section>\n");
+                    }
         html.append("</main>\n");
 
         html.append("<script>").append(JS).append("</script>\n");
@@ -99,6 +132,63 @@ public class ProtocolBookHtmlWriter {
         if (outFile.getParentFile() != null && !outFile.getParentFile().isDirectory()) outFile.getParentFile().mkdirs();
         try (FileWriter w = new FileWriter(outFile)) { w.write(html.toString()); }
         return outFile;
+    }
+
+    private List<String> sortedCategories(Map<String, Map<Integer, List<Protocol>>> byCategory) {
+        List<String> categories = new ArrayList<String>(byCategory.keySet());
+        categories.sort(Comparator.comparingInt(this::categoryRank).thenComparing(Comparator.naturalOrder()));
+        return categories;
+    }
+
+    private List<Integer> sortedGroups(Map<Integer, List<Protocol>> byGroup) {
+        List<Integer> groups = new ArrayList<Integer>(byGroup.keySet());
+        groups.sort(Comparator.naturalOrder()); // Integer.MAX_VALUE ("Other"/unparseable) sorts last on its own
+        return groups;
+    }
+
+    private int categoryCount(Map<Integer, List<Protocol>> byGroup) {
+        int total = 0;
+        for (List<Protocol> list : byGroup.values()) total += list.size();
+        return total;
+    }
+
+    private int bucketCount(Map<String, Map<Integer, List<Protocol>>> byCategory) {
+        int total = 0;
+        for (Map<Integer, List<Protocol>> byGroup : byCategory.values()) total += categoryCount(byGroup);
+        return total;
+    }
+
+    private String patientBucket(Protocol p) {
+        String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
+        return type != null && type.toLowerCase(Locale.ROOT).contains("pediatric") ? "Pediatric" : "Adult";
+    }
+
+    private int bucketRank(String bucket) {
+        int idx = BUCKET_ORDER.indexOf(bucket);
+        return idx >= 0 ? idx : BUCKET_ORDER.size();
+    }
+
+    // Whole-number prefix of the protocol number (e.g. 9 from "9.2") - GE's own grouping convention.
+    private int groupKey(Protocol p) {
+        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+        if (number == null) return Integer.MAX_VALUE;
+        try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MAX_VALUE; }
+    }
+
+    // Labels a number-group with whichever GE body part (protocolmetadata.json's anatomyRegion) is
+    // most common among its protocols, rather than a hardcoded/guessed name.
+    private String groupLabel(int key, List<Protocol> group) {
+        if (key == Integer.MAX_VALUE) return "Other";
+        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
+        for (Protocol p : group) {
+            String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
+            if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
+            counts.merge(bodyPart, 1, Integer::sum);
+        }
+        String best = null; int bestCount = 0;
+        for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
+        String raw = best != null ? best : ("Group " + key);
+        return Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
     }
 
     private String protocolId(Protocol p, int index) {
@@ -116,13 +206,23 @@ public class ProtocolBookHtmlWriter {
         return idx >= 0 ? idx : CATEGORY_ORDER.size();
     }
 
+    // A "title" override renames how a protocol displays in the book without touching its
+    // underlying scanner name (which still flows through --json/console output unchanged).
+    private String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
+        Metadata m = p.getMetadata();
+        String number = m == null ? null : m.getProtocolNumber();
+        ProtocolOverride override = overrides.get(number);
+        if (override != null && override.getTitle() != null && !override.getTitle().trim().isEmpty()) return override.getTitle();
+        return m == null ? null : m.getName();
+    }
+
     private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                                  String logoDataUri, ProtocolImages protocolImages) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         html.append("<div class=\"protocol-header\">\n");
         if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
-        html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(m == null ? null : m.getName())).append("</h2>\n");
+        html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(displayName(p, overrides))).append("</h2>\n");
         html.append("</div>\n");
 
         String imageUrl = protocolImages == null ? null : protocolImages.urlFor(number);
@@ -155,14 +255,17 @@ public class ProtocolBookHtmlWriter {
     }
 
     private void appendSeries(StringBuilder html, Series s, LabelConfig labels) {
+        boolean scout = isScout(s);
         html.append("<div class=\"series\"><h3>Series ").append(s.getNumber()).append(" &mdash; ")
                 .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
-        if (s.getContrast() != null && s.getContrast().isIv()) {
+        // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
+        // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
+        if (!scout && s.getContrast() != null && s.getContrast().isIv()) {
             html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(s.getContrast().getIvVolume())).append(" mL");
             if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(HtmlSupport.esc(s.getContrast().getFlowRate())).append(" mL/s");
             html.append("</p>\n");
         }
-        if (isScout(s)) appendScoutTable(html, s, labels);
+        if (scout) appendScoutTable(html, s, labels);
         else for (Group g : s.getGroups()) appendGroup(html, g, labels);
         html.append("</div>\n");
     }
@@ -228,9 +331,11 @@ public class ProtocolBookHtmlWriter {
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
             // Sidebar - collapsed to an icon rail, hover (or click, for touchscreens) expands it.
+            // Three drill-down levels share the same open/hover mechanic (see toggleMenu in JS):
+            // menu-category (Adult/Pediatric/PDF library) -> menu-subcat (Neuro/Body/MSK/Other) -> menu-group (specific body part).
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
-            ".main-menu:hover,.main-menu.expanded{width:300px;}" +
+            ".main-menu:hover,.main-menu.expanded{width:340px;}" +
             ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
             ".menu-logo img{max-width:44px;max-height:44px;}" +
             ".main-menu:hover .menu-logo img,.main-menu.expanded .menu-logo img{max-width:220px;}" +
@@ -244,7 +349,21 @@ public class ProtocolBookHtmlWriter {
             "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
             ".nav-text{display:inline-block;}" +
             ".submenu{display:none;background:rgba(0,0,0,.15);}" +
-            ".menu-category:hover .submenu,.menu-category.open .submenu{display:block;}" +
+            ".menu-category:hover>.submenu,.menu-category.open>.submenu{display:block;}" +
+
+            ".menu-subcat{border-top:1px solid rgba(255,255,255,.15);}" +
+            ".subcat-link{display:block;padding:10px 14px 10px 56px;color:#fff;text-decoration:none;font-weight:600;font-size:14px;" +
+            "cursor:pointer;white-space:normal;background:rgba(0,0,0,.08);}" +
+            ".subcat-link:hover,.menu-subcat.open>.subcat-link{background:var(--ahs-orange-dark);}" +
+            ".menu-subcat:hover>.submenu,.menu-subcat.open>.submenu{display:block;}" +
+
+            ".menu-group{border-top:1px solid rgba(255,255,255,.10);}" +
+            ".group-link{display:block;padding:9px 14px 9px 72px;color:#fff;text-decoration:none;font-weight:500;font-size:13px;" +
+            "cursor:pointer;white-space:normal;background:rgba(0,0,0,.16);}" +
+            ".group-link:hover,.menu-group.open>.group-link{background:var(--ahs-orange-dark);}" +
+            ".menu-group:hover>.submenu,.menu-group.open>.submenu{display:block;}" +
+            ".menu-group>.submenu a{padding-left:88px;}" +
+
             ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
             "white-space:normal;border-top:1px solid rgba(255,255,255,.12);}" +
             ".submenu a:hover,.submenu a.active{background:var(--ahs-blue);}" +
@@ -278,8 +397,10 @@ public class ProtocolBookHtmlWriter {
             "document.querySelectorAll('.submenu a').forEach(function(a){a.classList.remove('active');});" +
             "var link=document.querySelector('.submenu a[data-target=\"'+id+'\"]');if(link)link.classList.add('active');" +
             "window.scrollTo(0,0);}" +
-            "function toggleCategory(el){" +
-            "var li=el.parentElement;var wasOpen=li.classList.contains('open');" +
-            "document.querySelectorAll('.menu-category.open').forEach(function(l){l.classList.remove('open');});" +
+            // Generic drill-down toggle shared by every sidebar level (menu-category/menu-subcat/menu-group):
+            // opens the clicked node and closes its siblings at the same level, leaving ancestor/descendant levels alone.
+            "function toggleMenu(el){" +
+            "var li=el.parentElement;var siblingsUl=li.parentElement;var wasOpen=li.classList.contains('open');" +
+            "Array.prototype.forEach.call(siblingsUl.children,function(sib){sib.classList.remove('open');});" +
             "if(!wasOpen)li.classList.add('open');return false;}";
 }

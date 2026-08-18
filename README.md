@@ -119,23 +119,25 @@ Parsed 42 protocol(s) from /path/to/input
 
 GE's raw export only ever gives you numeric/coded values for a few fields that are genuinely site-specific and can't be derived from the export itself — you have to look them up once at the scanner console (or its documentation) and record them here. These files are plain, hand-editable JSON that you keep alongside the tool (not regenerated data — re-parsing never touches values you've already filled in).
 
-### `protocol-overrides.json` — per-protocol notes, exclusion, send destination
+### `protocol-overrides.json` — per-protocol title, notes, exclusion, send destination
 
-Keyed by protocol number (the same `slotNumber`/protocol number shown in the console summary and HTML book):
+Keyed by protocol number (the same `slotNumber`/protocol number shown in the console summary and HTML book) — this is also the easiest way to **rename a protocol's displayed title or exclude it**, without touching the scanner export:
 
 ```json
 {
   "9.2":  { "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
   "9.4":  { "excluded": true },
-  "5.1":  { "sendDestination": "AHSPACS + 3D Lab" }
+  "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
+  "3.7":  { "title": "CT Neck Soft Tissue (renamed)" }
 }
 ```
 
+- `title` — overrides how the protocol displays in the HTML book (sidebar link and page header) without changing its underlying scanner name, which still flows through unchanged everywhere else (console summary, `--json`). Leave blank/omit to keep the scanner name.
 - `notes` — free-text scanning notes shown inline in the HTML protocol book.
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
 - `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
 
-Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all four fields blank, so renaming or excluding a protocol is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json`, `detector-labels.json` — code → label lookups
 
@@ -203,10 +205,15 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
 `--html <file>` renders every parsed protocol into a single self-contained, browsable HTML app (no external CSS/JS/font/CDN dependencies — it works fully offline) at `<file>`, styled in Atlantic Health System's colors (orange sidebar, blue main content — a best-effort approximation, not sourced from an official brand guide):
 
-- A **sidebar**, collapsed to a 56px icon rail by default, expands on hover (or a click/tap, for touchscreens) to show protocol links grouped by reading category — **Neuro**, **Body**, **MSK**, **Other** (guessed from body part, overridable per body part via `category-labels.json`) — plus an optional **Surgical Planning Protocols** category listing any externally hosted PDFs from `pdf-library.json`. Each category itself starts collapsed; clicking one expands just that category's protocol list.
+- A **sidebar**, collapsed to a 56px icon rail by default, expands on hover (or a click/tap, for touchscreens) and drills down three levels, each starting collapsed until you open it:
+  1. **Adult** / **Pediatric** — split from each protocol's patient type.
+  2. **Neuro** / **Body** / **MSK** / **Other** — the reading category guessed from body part (overridable per body part via `category-labels.json`).
+  3. A **specific group** keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together) and labeled with whichever GE body part (`anatomyRegion`) is most common among its protocols — so "Chest" and "Abd/Pel" naturally end up as separate groups under Body instead of one lumped-together section.
+
+  An optional **Surgical Planning Protocols** entry sits alongside Adult/Pediatric, listing any externally hosted PDFs from `pdf-library.json`.
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo is shown until something is picked.
-- Each protocol shows its number, name, patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series (scout series get a compact plane/kV/mA table; other series show kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, rotation time, detector, and dose per acquisition group, plus a reconstruction table with thickness/interval/kernel). Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
-- Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely.
+- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show any IV contrast volume/injection rate under the series name, then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, rotation time, detector, and dose per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
+- Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.
 - Printing (browser print / print-to-PDF) hides the sidebar and expands the protocol card to the full page width.
 
 Open the resulting file directly in any browser — nothing needs to be served (unless you want to distribute it from a shared location, e.g. an internal web server).
