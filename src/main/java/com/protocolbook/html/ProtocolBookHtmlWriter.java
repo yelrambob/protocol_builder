@@ -7,8 +7,6 @@ import com.protocolbook.overrides.ProtocolOverride;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -31,15 +29,17 @@ import java.util.*;
  * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
  * convention (protocol number -> filename) rather than a maintained list; the <img> hides
  * itself client-side if that particular protocol doesn't have one on the server.
+ * An optional {@link Changelog} of hand-typed "what changed and why" entries gets its own
+ * top-level "Recent Changes" sidebar entry, most recent first, each row linking to that
+ * protocol's page when its number still matches one in the book.
  */
 public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
-                       String bookTitle, int recentChangesDays, File outFile) throws IOException {
+                       String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
-        List<Protocol> recentlyChanged = recentlyChangedProtocols(protocols, overrides, recentChangesDays);
         // bucket (Adult/Pediatric) -> protocol-number whole-number prefix -> protocols.
         // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
         // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
@@ -62,11 +62,15 @@ public class ProtocolBookHtmlWriter {
         buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
 
         Map<Protocol, String> ids = new IdentityHashMap<Protocol, String>();
+        Map<String, Protocol> byNumber = new HashMap<String, Protocol>();
         int index = 0;
         for (String bucket : buckets)
             for (Integer prefix : sortedGroups(tree.get(bucket)))
-                for (Protocol p : tree.get(bucket).get(prefix))
+                for (Protocol p : tree.get(bucket).get(prefix)) {
                     ids.put(p, protocolId(p, index++));
+                    String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+                    if (number != null) byNumber.put(number, p);
+                }
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
@@ -98,10 +102,10 @@ public class ProtocolBookHtmlWriter {
             }
             html.append("</ul>\n</li>\n");
         }
-        if (!recentlyChanged.isEmpty()) {
+        if (changelog != null && !changelog.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
                     .append("<span class=\"nav-icon\"><span>R</span></span>")
-                    .append("<span class=\"nav-text\">Recent Changes (").append(recentlyChanged.size()).append(")</span></a>\n</li>\n");
+                    .append("<span class=\"nav-text\">Recent Changes (").append(changelog.size()).append(")</span></a>\n</li>\n");
         }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
@@ -120,7 +124,7 @@ public class ProtocolBookHtmlWriter {
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
-        if (!recentlyChanged.isEmpty()) appendRecentChanges(html, recentlyChanged, overrides, ids, recentChangesDays);
+        if (changelog != null && !changelog.isEmpty()) appendRecentChanges(html, changelog, ids, byNumber);
         for (String bucket : buckets)
             for (Integer prefix : sortedGroups(tree.get(bucket)))
                 for (Protocol p : tree.get(bucket).get(prefix)) {
@@ -292,48 +296,24 @@ public class ProtocolBookHtmlWriter {
         } catch (Exception e) { return Double.MAX_VALUE; }
     }
 
-    // protocolmetadata.json's "lastUpdatedDateTime" - the scanner's own record of when a protocol was
-    // last saved, not anything this tool tracks itself. Same format ProtocolFolderWalker parses for dedup.
-    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxx");
-    private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
-
-    private static OffsetDateTime parseTimestamp(String value) {
-        if (value == null || value.isEmpty()) return null;
-        try { return OffsetDateTime.parse(value, TIMESTAMP_FORMAT); }
-        catch (Exception e) { return null; }
-    }
-
-    // Protocols (not excluded) whose scanner lastUpdatedDateTime falls within the last N days,
-    // most-recently-changed first. recentChangesDays <= 0 disables the feature entirely (no
-    // window to check against, and no "Recent Changes" entry shows up in the sidebar).
-    private List<Protocol> recentlyChangedProtocols(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, int recentChangesDays) {
-        if (recentChangesDays <= 0) return Collections.emptyList();
-        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(recentChangesDays);
-        List<Protocol> recent = new ArrayList<Protocol>();
-        for (Protocol p : protocols) {
-            if (isExcluded(p, overrides)) continue;
-            OffsetDateTime updated = parseTimestamp(p.getMetadata() == null ? null : p.getMetadata().getLastUpdated());
-            if (updated != null && updated.isAfter(cutoff)) recent.add(p);
-        }
-        recent.sort((a, b) -> parseTimestamp(b.getMetadata().getLastUpdated()).compareTo(parseTimestamp(a.getMetadata().getLastUpdated())));
-        return recent;
-    }
-
-    private void appendRecentChanges(StringBuilder html, List<Protocol> recentlyChanged, Map<String, ProtocolOverride> overrides,
-                                      Map<Protocol, String> ids, int recentChangesDays) {
+    // Hand-typed log of what changed and why (see Changelog) - not derived from the scanner
+    // export, since protocolmetadata.json's lastUpdatedDateTime says a file changed but not what
+    // changed or why. Rows are already sorted newest-first by Changelog.load().
+    private void appendRecentChanges(StringBuilder html, List<Changelog.Entry> changelog, Map<Protocol, String> ids, Map<String, Protocol> byNumber) {
         html.append("<section id=\"recent-changes\" class=\"protocol-view\" style=\"display:none;\">\n");
-        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Protocols updated on the scanner in the last ")
-                .append(recentChangesDays).append(" days.</p>\n");
-        html.append("<table>\n<tr><th>Protocol</th><th>Name</th><th>Body Part</th><th>Last Updated</th></tr>\n");
-        for (Protocol p : recentlyChanged) {
-            Metadata m = p.getMetadata();
-            String id = ids.get(p);
-            OffsetDateTime updated = parseTimestamp(m.getLastUpdated());
-            html.append("<tr><td><a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
-                    .append(HtmlSupport.esc(m.getProtocolNumber())).append("</a></td><td>")
-                    .append(HtmlSupport.esc(displayName(p, overrides))).append("</td><td>")
-                    .append(HtmlSupport.esc(m.getBodyPart())).append("</td><td>")
-                    .append(updated == null ? "" : DISPLAY_DATE_FORMAT.format(updated)).append("</td></tr>\n");
+        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Hand-maintained log of what changed and why - see changelog.json.</p>\n");
+        html.append("<table>\n<tr><th>Date</th><th>Protocol</th><th>Note</th></tr>\n");
+        for (Changelog.Entry entry : changelog) {
+            Protocol p = entry.protocolNumber == null ? null : byNumber.get(entry.protocolNumber);
+            String id = p == null ? null : ids.get(p);
+            html.append("<tr><td>").append(HtmlSupport.esc(entry.displayDate())).append("</td><td>");
+            if (id != null) {
+                html.append("<a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                        .append(HtmlSupport.esc(entry.protocolNumber)).append("</a>");
+            } else {
+                html.append(HtmlSupport.esc(entry.protocolNumber));
+            }
+            html.append("</td><td>").append(HtmlSupport.esc(entry.note)).append("</td></tr>\n");
         }
         html.append("</table>\n</section>\n");
     }

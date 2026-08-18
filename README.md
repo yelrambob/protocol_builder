@@ -89,7 +89,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--json <dir>` | Write one normalized JSON file per protocol into `<dir>` (created if needed). See [JSON output](#json-output) below. |
 | `--html <file>` | Render every parsed protocol as a single self-contained, browsable HTML file at `<file>`. See [HTML protocol book](#html-protocol-book) below. |
 | `--book-title <text>` | Sets the browser tab title and the welcome-page heading in the HTML book. Defaults to "Protocol Book". Only takes effect together with `--html`. |
-| `--recent-days <n>` | Size (in days) of the "Recent Changes" window in the HTML book, checked against each protocol's scanner `lastUpdatedDateTime`. Defaults to 30. `0` or negative disables the feature (no sidebar entry, no table) entirely. Only takes effect together with `--html`. |
+| `--changelog <file>` | Path to a hand-typed "what changed and why" log, rendered as the book's "Recent Changes" sidebar entry/table (see below). Defaults to `./changelog.json`; used only if present. Only takes effect together with `--html`. |
 | `--peds-weights <file>` | Write a printable sheet of protocols whose patient type is pediatric, with any weight-in-kg found in the protocol name annotated with its pound equivalent. |
 | `--overrides <file>` | Path to the hand-maintained overrides JSON (notes, exclusions, send destinations). Defaults to `./protocol-overrides.json`; used only if the file exists. Only takes effect together with `--html`. |
 | `--kernel-labels <file>` | Path to the recon-kernel-code → label lookup. Defaults to `./kernel-labels.json`; used only if present. Only takes effect together with `--html`. |
@@ -154,7 +154,7 @@ Each is a flat `{ "code": "label" }` map:
 
 All three are only used when `--html` is passed.
 
-### `logo.png`, `pdf-library.json`, `manual-protocols.json`, protocol images — optional extras for the HTML book
+### `logo.png`, `pdf-library.json`, `manual-protocols.json`, `changelog.json`, protocol images — optional extras for the HTML book
 
 - **`logo.png`** (or `.jpg`/`.gif`/`.svg`, path set via `--logo`) is embedded as a base64 data URI so the generated book stays a single offline-capable file — no logo file means no logo markup is rendered at all.
 - **`pdf-library.json`** is a hand-maintained list of externally hosted PDFs, since there's no naming convention that could locate arbitrary files on your own server:
@@ -171,6 +171,15 @@ All three are only used when `--html` is passed.
   ]
   ```
   If a manual protocol's number collides with a scanner-discovered one, the manual entry wins.
+- **`changelog.json`** is a hand-typed log of what changed on a protocol and why — the scanner export can tell you *that* `lastUpdatedDateTime` changed, never *what* or *why*, so this has to be written by a person:
+  ```json
+  [
+    { "date": "2026-08-15", "protocolNumber": "9.2", "note": "Increased mA range for noisy images" },
+    { "date": "2026-08-10", "protocolNumber": "5.1", "note": "Renamed to CTA TAVR" },
+    { "date": "2026-07-01", "note": "Site-wide contrast injector recalibrated" }
+  ]
+  ```
+  Rendered as the "Recent Changes" sidebar entry/table, sorted most-recent-first (`date` should be `yyyy-MM-dd`; an entry with an unparseable or missing date still shows, just sorted last). `protocolNumber` is optional — omit it for a note that isn't about one specific protocol; when present and still in the book, that row links straight to the protocol's page.
 - **Protocol reference images** aren't listed anywhere — point `--protocol-images-base` at wherever you host them (e.g. your own EC2 server) and name each file after its protocol number (`9.2.png`, `8.8.png`, ...). Every protocol page attempts to load its own image and hides it client-side (no broken-image icon) if that particular protocol doesn't have one.
 
 ### Populating the label/override files: the `--init-*` workflow
@@ -208,7 +217,7 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
   1. **Adult** / **Pediatric** — split from each protocol's patient type.
   2. A **reading category** keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together) and labeled to match the scanner console's own numbering, not a guess — `1` Head, `2` Face, `3` Neck, `4` Upper Ext., `5` Chest, `6` ABD/PEL, `7` Spine, `8` Pelvis, `9` Lower Ext. by default (overridable via `category-labels.json`). **A prefix with no category mapping (by default anything outside 1-9, in particular `10.x` QA/phantom protocols) is left out of the book entirely** — no manual exclusion needed.
 
-  An optional **Recent Changes** entry (top-level, alongside Adult/Pediatric) links directly to a table of protocols whose scanner `lastUpdatedDateTime` falls within the last `--recent-days` days (default 30), most-recently-changed first, each row linking straight to that protocol's page. Omitted entirely when nothing qualifies or `--recent-days` is `0`/negative.
+  An optional **Recent Changes** entry (top-level, alongside Adult/Pediatric) links directly to a table built from `changelog.json` — a hand-typed log of what changed and why, most-recent-first, each row linking to that protocol's page when its number still matches one in the book. Not derived from the scanner export; nothing here is automatic. Omitted entirely when the file is missing or empty.
 
   An optional **Surgical Planning Protocols** entry also sits alongside Adult/Pediatric, listing any externally hosted PDFs from `pdf-library.json`.
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
@@ -263,6 +272,7 @@ src/main/java/com/protocolbook/
     ProtocolBookHtmlWriter.java   --html output (AHS-themed click-only-sidebar single-page app)
     HtmlSupport.java              Shared HTML escaping/CSS used by both HTML writers
     PdfLibrary.java                --pdf-library loading
+    Changelog.java                 --changelog loading (hand-typed "Recent Changes" log)
     ProtocolImages.java           --protocol-images-base URL convention
     PediatricWeightSheetWriter.java --peds-weights output
 src/test/java/com/protocolbook/   JUnit 5 tests

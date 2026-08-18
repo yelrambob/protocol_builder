@@ -1,5 +1,6 @@
 package com.protocolbook;
 
+import com.protocolbook.html.Changelog;
 import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.PediatricWeightSheetWriter;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
@@ -31,7 +32,7 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--recent-days <n, default 30>]
+ * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--changelog <file>]
  *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
@@ -41,10 +42,11 @@ import java.util.TreeSet;
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
  * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, --logo to
  * ./logo.png, --pdf-library to ./pdf-library.json, --manual-protocols to ./manual-protocols.json,
- * all only if present. --logo is embedded (base64) into the generated book; --book-title sets the
- * browser tab title and the welcome-page heading (defaults to "Protocol Book"); --recent-days
- * controls the window (in days, off the scanner's own lastUpdatedDateTime) for the book's "Recent
- * Changes" sidebar entry/table - 0 or negative disables it entirely; --pdf-library entries are
+ * --changelog to ./changelog.json, all only if present. --logo is embedded (base64) into the
+ * generated book; --book-title sets the browser tab title and the welcome-page heading (defaults
+ * to "Protocol Book"); --changelog is a hand-typed "what changed and why" log (see Changelog) -
+ * rendered as the book's "Recent Changes" sidebar entry/table, most recent first, omitted
+ * entirely when the file is missing/empty; --pdf-library entries are
  * linked (title+url pairs you maintain by hand - see PdfLibrary) since those files live on their
  * own separate server. --category-labels maps a protocol number's whole-number prefix (1-9) to a
  * reading category, matching the scanner console's own numbering (1 Head, 2 Face, ... 9 Lower
@@ -63,7 +65,7 @@ public class Main {
             File input = null;
             File jsonDir = null, htmlFile = null, pedsWeightFile = null;
             String bookTitle = null;
-            int recentChangesDays = 30;
+            File changelogFile = new File("changelog.json");
             File overridesFile = new File("protocol-overrides.json");
             File kernelLabelsFile = new File("kernel-labels.json");
             File planeLabelsFile = new File("plane-labels.json");
@@ -77,7 +79,7 @@ public class Main {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
                 else if ("--book-title".equals(args[i])) bookTitle = args[++i];
-                else if ("--recent-days".equals(args[i])) recentChangesDays = Integer.parseInt(args[++i]);
+                else if ("--changelog".equals(args[i])) changelogFile = new File(args[++i]);
                 else if ("--peds-weights".equals(args[i])) pedsWeightFile = new File(args[++i]);
                 else if ("--overrides".equals(args[i])) overridesFile = new File(args[++i]);
                 else if ("--kernel-labels".equals(args[i])) kernelLabelsFile = new File(args[++i]);
@@ -157,12 +159,14 @@ public class Main {
                 String logoDataUri = loadLogoDataUri(logoFile);
                 List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, bookTitle, recentChangesDays, htmlFile);
+                List<Changelog.Entry> changelog = Changelog.load(changelogFile);
+                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, bookTitle, changelog, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
                         + (pdfLibrary.isEmpty() ? "" : " (" + pdfLibrary.size() + " PDF link(s) from " + pdfLibraryFile + ")")
-                        + (protocolImages != null ? " (protocol images from " + protocolImagesBase + "/<number>." + protocolImagesExt + ")" : ""));
+                        + (protocolImages != null ? " (protocol images from " + protocolImagesBase + "/<number>." + protocolImagesExt + ")" : "")
+                        + (changelog.isEmpty() ? "" : " (" + changelog.size() + " changelog entr" + (changelog.size() == 1 ? "y" : "ies") + " from " + changelogFile + ")"));
             }
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());
