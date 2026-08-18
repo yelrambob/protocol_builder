@@ -10,3 +10,4 @@ out/
 # never committed. The checked-in sample fixtures live in src/test/resources/sample-protocols.
 /protocol data/
 book.html
+peds-weights.html

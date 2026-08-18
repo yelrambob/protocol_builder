@@ -10,32 +10,90 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * Renders the parsed protocols as a single browsable HTML page, grouped into collapsible
- * sections by protocol number (e.g. all "9.x" protocols together), with each section labeled
- * by the body part most common among its protocols. Protocols flagged excluded in the
- * overrides are left out entirely; protocols with manual scanning notes show them inline.
- *
- * Structure only, no visual design pass yet - plain <details>/<summary> and minimal CSS.
+ * Renders the parsed protocols as a single self-contained HTML app: a hover-expandable sidebar
+ * grouped by reading category (Neuro/Body/MSK/Other, guessed from body part - see
+ * {@link LabelConfig#category}), and a main panel that shows exactly one protocol at a time,
+ * toggled by a small inline script (no external JS/CSS/fonts - everything is embedded so the
+ * file works offline). Protocols flagged excluded in the overrides are left out entirely;
+ * protocols with manual scanning notes/send destination show them inline.
+ * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
+ * its own top-level sidebar category, linking out with target="_blank" since those files live
+ * on a different server than wherever this book itself ends up hosted.
+ * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
+ * convention (protocol number -> filename) rather than a maintained list; the <img> hides
+ * itself client-side if that particular protocol doesn't have one on the server.
  */
 public class ProtocolBookHtmlWriter {
+    // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
+    private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
 
-    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels, File outFile) throws IOException {
-        Map<Integer, List<Protocol>> groups = new TreeMap<Integer, List<Protocol>>(GROUP_ORDER);
+    public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages, File outFile) throws IOException {
+        Map<String, List<Protocol>> groups = new LinkedHashMap<String, List<Protocol>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
-            groups.computeIfAbsent(groupKey(p), k -> new ArrayList<Protocol>()).add(p);
+            String category = labels.category(p.getMetadata() == null ? null : p.getMetadata().getBodyPart());
+            groups.computeIfAbsent(category, k -> new ArrayList<Protocol>()).add(p);
         }
         for (List<Protocol> group : groups.values()) group.sort(Comparator.comparingDouble(this::sortKey));
 
+        List<String> categories = new ArrayList<String>(groups.keySet());
+        categories.sort(Comparator.comparingInt(this::categoryRank).thenComparing(Comparator.naturalOrder()));
+
+        Map<Protocol, String> ids = new IdentityHashMap<Protocol, String>();
+        int index = 0;
+        for (String category : categories) for (Protocol p : groups.get(category)) ids.put(p, protocolId(p, index++));
+
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
-        html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n<h1>Protocol Book</h1>\n");
-        for (Map.Entry<Integer, List<Protocol>> group : groups.entrySet()) {
-            html.append("<details class=\"group\">\n<summary>").append(esc(groupLabel(group.getKey(), group.getValue())))
-                    .append(" (").append(group.getValue().size()).append(")</summary>\n");
-            for (Protocol p : group.getValue()) appendProtocol(html, p, overrides, labels);
-            html.append("</details>\n");
+        html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n");
+
+        html.append("<nav class=\"main-menu\">\n");
+        if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
+        html.append("<ul>\n");
+        for (String category : categories) {
+            List<Protocol> group = groups.get(category);
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
+                    .append("<span class=\"nav-icon\">").append(categoryInitial(category)).append("</span>")
+                    .append("<span class=\"nav-text\">").append(HtmlSupport.esc(category)).append(" (").append(group.size()).append(")</span></a>\n");
+            html.append("<ul class=\"submenu\">\n");
+            for (Protocol p : group) {
+                String id = ids.get(p);
+                Metadata m = p.getMetadata();
+                html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
+                        .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                        .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
+                        .append(HtmlSupport.esc(m == null ? null : m.getName())).append("</a></li>\n");
+            }
+            html.append("</ul>\n</li>\n");
         }
+        if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleCategory(this);\">")
+                    .append("<span class=\"nav-icon\"><span>S</span></span>")
+                    .append("<span class=\"nav-text\">Surgical Planning Protocols (").append(pdfLibrary.size()).append(")</span></a>\n");
+            html.append("<ul class=\"submenu\">\n");
+            for (PdfLibrary.Entry entry : pdfLibrary) {
+                html.append("<li><a href=\"").append(HtmlSupport.esc(entry.url)).append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                        .append(HtmlSupport.esc(entry.title)).append("</a></li>\n");
+            }
+            html.append("</ul>\n</li>\n");
+        }
+        html.append("</ul>\n</nav>\n");
+
+        html.append("<main class=\"main-content\">\n");
+        html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
+        if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
+        html.append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        for (String category : categories) {
+            for (Protocol p : groups.get(category)) {
+                html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
+                appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
+                html.append("</section>\n");
+            }
+        }
+        html.append("</main>\n");
+
+        html.append("<script>").append(JS).append("</script>\n");
         html.append("</body>\n</html>\n");
 
         if (outFile.getParentFile() != null && !outFile.getParentFile().isDirectory()) outFile.getParentFile().mkdirs();
@@ -43,40 +101,65 @@ public class ProtocolBookHtmlWriter {
         return outFile;
     }
 
-    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
+    private String protocolId(Protocol p, int index) {
+        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+        String base = number != null && !number.isEmpty() ? number : ("unnamed-" + index);
+        return "p-" + base.replaceAll("[^a-zA-Z0-9]+", "-");
+    }
+
+    private String categoryInitial(String category) {
+        return category == null || category.isEmpty() ? "?" : category.substring(0, 1).toUpperCase(Locale.ROOT);
+    }
+
+    private int categoryRank(String category) {
+        int idx = CATEGORY_ORDER.indexOf(category);
+        return idx >= 0 ? idx : CATEGORY_ORDER.size();
+    }
+
+    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels,
+                                 String logoDataUri, ProtocolImages protocolImages) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
-        html.append("<details class=\"protocol\">\n<summary>").append(esc(number)).append(" &mdash; ").append(esc(m == null ? null : m.getName())).append("</summary>\n");
-        html.append("<p class=\"meta\">").append(esc(m == null ? null : m.getPatientType())).append(" &middot; ")
-                .append(esc(m == null ? null : m.getBodyPart())).append("</p>\n");
+        html.append("<div class=\"protocol-header\">\n");
+        if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
+        html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(m == null ? null : m.getName())).append("</h2>\n");
+        html.append("</div>\n");
+
+        String imageUrl = protocolImages == null ? null : protocolImages.urlFor(number);
+        if (imageUrl != null) {
+            html.append("<img class=\"protocol-image\" src=\"").append(HtmlSupport.esc(imageUrl)).append("\" alt=\"")
+                    .append(HtmlSupport.esc(number)).append(" reference image\" onerror=\"this.style.display='none';\">\n");
+        }
+
+        html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
+                .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
         ProtocolOverride override = overrides.get(number);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
-            html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(esc(override.getNotes())).append("</div>\n");
+            html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(HtmlSupport.esc(override.getNotes())).append("</div>\n");
         }
         if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
-            html.append("<p class=\"destination\">Sends to: ").append(esc(override.getSendDestination())).append("</p>\n");
+            html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
-            html.append("<p class=\"dose\">Exam CTDIvol: ").append(esc(p.getDose().getCtdi())).append(" mGy &middot; DLP: ")
-                    .append(esc(p.getDose().getDlp())).append(" mGy&middot;cm</p>\n");
+            html.append("<p class=\"dose\">Exam CTDIvol: ").append(HtmlSupport.esc(p.getDose().getCtdi())).append(" mGy &middot; DLP: ")
+                    .append(HtmlSupport.esc(p.getDose().getDlp())).append(" mGy&middot;cm</p>\n");
         }
 
         for (Series s : p.getSeries()) appendSeries(html, s, labels);
 
         if (!p.getNotes().isEmpty()) {
-            html.append("<p class=\"notes\">Notes: ").append(esc(String.join("; ", p.getNotes()))).append("</p>\n");
+            html.append("<p class=\"notes\">Notes: ").append(HtmlSupport.esc(String.join("; ", p.getNotes()))).append("</p>\n");
         }
-        html.append("</details>\n");
     }
 
     private void appendSeries(StringBuilder html, Series s, LabelConfig labels) {
         html.append("<div class=\"series\"><h3>Series ").append(s.getNumber()).append(" &mdash; ")
-                .append(esc(s.getScanType())).append(esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
+                .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         if (s.getContrast() != null && s.getContrast().isIv()) {
-            html.append("<p class=\"contrast\">IV contrast: ").append(esc(s.getContrast().getIvVolume())).append(" mL");
-            if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(esc(s.getContrast().getFlowRate())).append(" mL/s");
+            html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(s.getContrast().getIvVolume())).append(" mL");
+            if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(HtmlSupport.esc(s.getContrast().getFlowRate())).append(" mL/s");
             html.append("</p>\n");
         }
         if (isScout(s)) appendScoutTable(html, s, labels);
@@ -94,8 +177,8 @@ public class ProtocolBookHtmlWriter {
         for (Group g : s.getGroups()) {
             Acquisition a = g.getAcquisition();
             String plane = g.getReconstructions().isEmpty() ? null : g.getReconstructions().get(0).getPlane();
-            html.append("<tr><td>").append(esc(labels.plane(plane))).append("</td><td>").append(esc(a.getKv()))
-                    .append("</td><td>").append(esc(a.getMa())).append("</td></tr>\n");
+            html.append("<tr><td>").append(HtmlSupport.esc(labels.plane(plane))).append("</td><td>").append(HtmlSupport.esc(a.getKv()))
+                    .append("</td><td>").append(HtmlSupport.esc(a.getMa())).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
@@ -103,18 +186,18 @@ public class ProtocolBookHtmlWriter {
     private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
         Acquisition a = g.getAcquisition();
         boolean autoMa = a.getMaMode() != null && a.getMinMa() != null && a.getMaxMa() != null;
-        html.append("<p class=\"acquisition\">").append(esc(a.getKv())).append(" kV &middot; ")
-                .append(autoMa ? esc(a.getMinMa()) + "-" + esc(a.getMaxMa()) : esc(a.getMa())).append(" mA");
-        if (a.getNoiseIndex() != null) html.append(" (NI ").append(esc(a.getNoiseIndex())).append(")");
-        if (a.getPitch() != null) html.append(" &middot; pitch ").append(esc(a.getPitch()));
-        if (a.getRotationTime() != null) html.append(" &middot; ").append(esc(a.getRotationTime())).append(" s rotation");
-        if (a.getDetector() != null) html.append(" &middot; Detector: ").append(esc(labels.detector(a.getDetector())));
-        if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(esc(g.getDose().getCtdi())).append(" mGy");
+        html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
+                .append(autoMa ? HtmlSupport.esc(a.getMinMa()) + "-" + HtmlSupport.esc(a.getMaxMa()) : HtmlSupport.esc(a.getMa())).append(" mA");
+        if (a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
+        if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
+        if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
+        if (a.getDetector() != null) html.append(" &middot; Detector: ").append(HtmlSupport.esc(labels.detector(a.getDetector())));
+        if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
-            html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(esc(r.getName()))
-                    .append("</td><td>").append(esc(r.getThickness()))
-                    .append("</td><td>").append(esc(r.getInterval())).append("</td><td>").append(esc(labels.kernel(r.getKernel()))).append("</td></tr>\n");
+            html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
+                    .append("</td><td>").append(HtmlSupport.esc(r.getThickness()))
+                    .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel()))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
@@ -123,12 +206,6 @@ public class ProtocolBookHtmlWriter {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         ProtocolOverride o = overrides.get(number);
         return o != null && o.isExcluded();
-    }
-
-    private int groupKey(Protocol p) {
-        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null) return Integer.MAX_VALUE;
-        try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MAX_VALUE; }
     }
 
     private double sortKey(Protocol p) {
@@ -142,99 +219,67 @@ public class ProtocolBookHtmlWriter {
         } catch (Exception e) { return Double.MAX_VALUE; }
     }
 
-    private String groupLabel(int key, List<Protocol> group) {
-        if (key == Integer.MAX_VALUE) return "Other";
-
-        String label;
-        if (GROUP_LABEL_OVERRIDES.containsKey(key)) {
-            label = GROUP_LABEL_OVERRIDES.get(key);
-        } else {
-            Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
-            for (Protocol p : group) {
-                String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
-                if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
-                counts.merge(bodyPart, 1, Integer::sum);
-            }
-            String best = null; int bestCount = 0;
-            for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
-            String raw = best != null ? best : ("Protocol " + key);
-            label = Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
-        }
-
-        if (!QA_GROUP.equals(key) && isMajorityPediatric(group)) label = "Peds " + label;
-        return label;
-    }
-
-    private boolean isMajorityPediatric(List<Protocol> group) {
-        int pediatric = 0, other = 0;
-        for (Protocol p : group) {
-            String patientType = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
-            if (patientType != null && patientType.trim().equalsIgnoreCase("pediatric")) pediatric++;
-            else other++;
-        }
-        return pediatric > other;
-    }
-
-    // Body-part majority vote mislabels some groups - override those by hand:
-    // 2.x and 12.x mix "head"/"orbit" metadata but are really the facial bones/sinus/orbit family,
-    // and 10.x is QA/phantom protocols with no meaningful body part at all.
-    private static final Integer QA_GROUP = 10;
-    private static final Map<Integer, String> GROUP_LABEL_OVERRIDES = new HashMap<Integer, String>() {{
-        put(2, "Face");
-        put(12, "Face");
-        put(QA_GROUP, "Miscellaneous QA");
-    }};
-
-    // Numbered groups sort in order, except QA/phantom protocols (10.x) which belong at the very
-    // bottom of the book instead of wedged between "Lower Extremities" and the pediatric groups.
-    private static final Comparator<Integer> GROUP_ORDER = Comparator.comparingInt(
-            key -> QA_GROUP.equals(key) ? Integer.MAX_VALUE - 1 : key);
-
-    private String esc(Object value) {
-        if (value == null) return "";
-        String s = String.valueOf(value);
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
-    }
-
+    // Best-effort Atlantic Health System palette (menu orange, main panel blue) - not sourced from an
+    // official brand guide, so swap these hex values if AHS's real brand colors differ.
     private static final String CSS =
-            ":root{" +
-            "--bg:#0f1115;--card:#171a21;--border:#2a2e37;--text:#e7e9ec;--text-muted:#9aa1ac;" +
-            "--accent:#5db1ff;--accent-2:#6fd7c4;--notes-bg:rgba(224,176,64,.14);--notes-border:#c9a227;" +
-            "--notes-text:#e8d9ad;--row-alt:rgba(255,255,255,.03);--shadow:rgba(0,0,0,.45);}" +
-            "@media (prefers-color-scheme:light){:root{" +
-            "--bg:#f6f7f9;--card:#ffffff;--border:#e1e4e9;--text:#1b1e24;--text-muted:#5b6270;" +
-            "--accent:#2563eb;--accent-2:#0d9488;--notes-bg:#fff8e1;--notes-border:#e0c060;" +
-            "--notes-text:#6b5410;--row-alt:rgba(0,0,0,.025);--shadow:rgba(0,0,0,.08);}}" +
+            ":root{--ahs-blue:#003057;--ahs-blue-accent:#0072ce;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
             "*{box-sizing:border-box;}" +
-            "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;" +
-            "background:var(--bg);color:var(--text);max-width:960px;margin:2rem auto;padding:0 1.25rem 4rem;" +
-            "line-height:1.45;-webkit-font-smoothing:antialiased;}" +
-            "h1{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;margin:0 0 1.5rem;}" +
-            "details.group{margin-bottom:1rem;background:var(--card);border:1px solid var(--border);" +
-            "border-radius:10px;padding:.15rem 1.25rem .9rem;box-shadow:0 1px 3px var(--shadow);}" +
-            "details.group>summary{font-size:1.1rem;font-weight:600;cursor:pointer;padding:.85rem 0;" +
-            "list-style:revert;color:var(--text);}" +
-            "details.group>summary::marker{color:var(--accent);}" +
-            "details.group>summary:hover{color:var(--accent);}" +
-            "details.protocol{border-left:2px solid var(--border);margin:.75rem 0 0 .5rem;padding:0 0 .1rem .9rem;}" +
-            "details.protocol:first-of-type{margin-top:.25rem;}" +
-            "details.protocol[open]{padding-bottom:.75rem;}" +
-            "details.protocol>summary{font-size:1.02rem;font-weight:600;cursor:pointer;padding:.5rem 0;" +
-            "list-style:revert;color:var(--text);}" +
-            "details.protocol>summary::marker{color:var(--accent-2);}" +
-            "details.protocol>summary:hover{color:var(--accent);}" +
-            ".meta,.dose,.destination{color:var(--text-muted);font-size:.85rem;margin:0 0 .35rem;}" +
-            ".notes{background:var(--notes-bg);border:1px solid var(--notes-border);color:var(--notes-text);" +
-            "border-radius:6px;padding:.5rem .65rem;margin:.5rem 0;font-size:.9rem;}" +
-            ".series{margin:.85rem 0 .85rem 1rem;padding-left:.85rem;border-left:2px solid var(--border);}" +
-            ".series h3{font-size:.92rem;font-weight:600;margin:0 0 .3rem;color:var(--text);}" +
-            ".contrast{color:var(--accent-2);font-size:.85rem;margin:0 0 .3rem;}" +
-            ".acquisition{font-size:.9rem;margin:0 0 .35rem;}" +
-            "table.recons{width:100%;border-collapse:collapse;margin:.2rem 0 .75rem;font-size:.85rem;}" +
-            "table.recons th{text-align:left;color:var(--text-muted);font-weight:600;padding:.35rem .6rem;" +
-            "border-bottom:1px solid var(--border);}" +
-            "table.recons td{padding:.35rem .6rem;border-bottom:1px solid var(--border);}" +
-            "table.recons tr:last-child td{border-bottom:none;}" +
-            "table.recons tr:nth-child(even){background:var(--row-alt);}" +
-            "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:var(--text-muted);font-style:italic;}";
+            "html,body{margin:0;padding:0;min-height:100%;}" +
+            "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
+
+            // Sidebar - collapsed to an icon rail, hover (or click, for touchscreens) expands it.
+            ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
+            "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
+            ".main-menu:hover,.main-menu.expanded{width:300px;}" +
+            ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
+            ".menu-logo img{max-width:44px;max-height:44px;}" +
+            ".main-menu:hover .menu-logo img,.main-menu.expanded .menu-logo img{max-width:220px;}" +
+            ".main-menu ul{list-style:none;margin:0;padding:6px 0;}" +
+            ".menu-category{border-top:1px solid rgba(255,255,255,.25);}" +
+            ".menu-category:first-child{border-top:none;}" +
+            ".cat-link{display:flex;align-items:center;padding:12px 0;color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;font-size:15px;cursor:pointer;}" +
+            ".cat-link:hover,.menu-category.open>.cat-link{background:var(--ahs-orange-dark);}" +
+            ".nav-icon{display:flex;align-items:center;justify-content:center;width:56px;height:28px;flex-shrink:0;}" +
+            ".nav-icon span{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;" +
+            "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
+            ".nav-text{display:inline-block;}" +
+            ".submenu{display:none;background:rgba(0,0,0,.15);}" +
+            ".menu-category:hover .submenu,.menu-category.open .submenu{display:block;}" +
+            ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
+            "white-space:normal;border-top:1px solid rgba(255,255,255,.12);}" +
+            ".submenu a:hover,.submenu a.active{background:var(--ahs-blue);}" +
+
+            // Main content - blue canvas, protocol shown as a white reading card so dense tables stay legible.
+            ".main-content{margin-left:56px;min-height:100vh;padding:2.5rem;}" +
+            ".protocol-view.welcome{color:#fff;text-align:center;padding-top:14vh;}" +
+            ".protocol-view.welcome h1{font-size:2.2rem;margin-bottom:.5rem;}" +
+            ".welcome-logo{max-width:280px;max-height:120px;margin-bottom:1.5rem;}" +
+            "section.protocol-view{background:#fff;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.25);padding:2rem 2.5rem;max-width:1100px;margin:0 auto;}" +
+            ".protocol-header{display:flex;align-items:center;gap:1rem;border-bottom:3px solid var(--ahs-orange);padding-bottom:.4rem;margin-bottom:1rem;}" +
+            ".protocol-logo{max-height:48px;max-width:160px;flex-shrink:0;}" +
+            ".protocol-image{display:block;max-width:100%;max-height:400px;margin:0 auto 1rem;border-radius:6px;}" +
+            "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
+            "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
+            ".meta,.dose,.destination{color:#555;font-size:.9rem;}" +
+            ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
+            ".series{margin:1rem 0 1rem 1rem;padding-left:1rem;border-left:3px solid #dbe7f3;}" +
+            "table{border-collapse:collapse;width:100%;margin:.4rem 0 1rem;}" +
+            "th,td{border:1px solid #dde3ea;padding:.4rem .6rem;font-size:.9rem;text-align:left;}" +
+            "th{background:var(--ahs-blue);color:#fff;}" +
+            "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:#555;}" +
+
+            "@media print{.main-menu{display:none;}body{background:#fff;}.main-content{margin-left:0;padding:0;}" +
+            "section.protocol-view{box-shadow:none;border-radius:0;max-width:none;}}";
+
+    private static final String JS =
+            "function showProtocol(id){" +
+            "document.querySelectorAll('.protocol-view').forEach(function(el){el.style.display='none';});" +
+            "var t=document.getElementById(id);if(t)t.style.display='block';" +
+            "document.querySelectorAll('.submenu a').forEach(function(a){a.classList.remove('active');});" +
+            "var link=document.querySelector('.submenu a[data-target=\"'+id+'\"]');if(link)link.classList.add('active');" +
+            "window.scrollTo(0,0);}" +
+            "function toggleCategory(el){" +
+            "var li=el.parentElement;var wasOpen=li.classList.contains('open');" +
+            "document.querySelectorAll('.menu-category.open').forEach(function(l){l.classList.remove('open');});" +
+            "if(!wasOpen)li.classList.add('open');return false;}";
 }
