@@ -7,19 +7,18 @@ import com.protocolbook.overrides.ProtocolOverride;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
  * Renders the parsed protocols as a single self-contained HTML app: a click-only sidebar (nothing
- * opens or expands on hover - that was cumbersome to navigate with several nested drill-down
- * levels; clicking a top-level entry both opens it and widens the collapsed icon rail) drilling
- * down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
- * (Neuro/Body/MSK/Other, guessed from body part - see {@link LabelConfig#category}) -> a specific
- * group keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together)
- * and labeled with whichever GE body part is most common among its protocols -> individual
- * protocols. A main panel shows exactly one protocol at a time, toggled by a small inline script
+ * opens or expands on hover - that was cumbersome to navigate; clicking a top-level entry both
+ * opens it and widens the collapsed icon rail) drilling down Adult/Pediatric (from
+ * {@link Metadata#getPatientType}) -> a reading category keyed by the protocol number's
+ * whole-number prefix (e.g. all "9.x" protocols together) and labeled to match the scanner
+ * console's own numbering (1 Head, 2 Face, 3 Neck, ... - see {@link LabelConfig#categoryForNumber})
+ * -> individual protocols. A prefix with no category mapping (by default anything outside 1-9,
+ * in particular 10.x QA/phantom protocols) is left out of the book entirely, not dumped in a
+ * catch-all. A main panel shows exactly one protocol at a time, toggled by a small inline script
  * (no external JS/CSS/fonts - everything is embedded so the file works offline). Protocols
  * flagged excluded in the overrides are left out entirely; a protocol with a "title" override
  * displays under that name instead of its scanner name, and manual scanning notes/send
@@ -30,44 +29,48 @@ import java.util.*;
  * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
  * convention (protocol number -> filename) rather than a maintained list; the <img> hides
  * itself client-side if that particular protocol doesn't have one on the server.
+ * An optional {@link Changelog} of hand-typed "what changed and why" entries gets its own
+ * top-level "Recent Changes" sidebar entry, most recent first, each row linking to that
+ * protocol's page when its number still matches one in the book.
  */
 public class ProtocolBookHtmlWriter {
-    // Fixed reading order; any custom category from category-labels.json sorts alphabetically after these.
-    private static final List<String> CATEGORY_ORDER = Arrays.asList("Neuro", "Body", "MSK", "Other");
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
-                       String bookTitle, int recentChangesDays, File outFile) throws IOException {
+                       String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
-        List<Protocol> recentlyChanged = recentlyChangedProtocols(protocols, overrides, recentChangesDays);
-        // bucket (Adult/Pediatric) -> category (Neuro/Body/MSK/Other) -> group (protocol-number prefix) -> protocols
-        Map<String, Map<String, Map<Integer, List<Protocol>>>> tree = new LinkedHashMap<String, Map<String, Map<Integer, List<Protocol>>>>();
+        // bucket (Adult/Pediatric) -> protocol-number whole-number prefix -> protocols.
+        // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
+        // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
+        // excluded one at a time in protocol-overrides.json.
+        Map<String, Map<Integer, List<Protocol>>> tree = new LinkedHashMap<String, Map<Integer, List<Protocol>>>();
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
+            int prefix = groupKey(p);
+            if (labels.categoryForNumber(prefix) == null) continue;
             String bucket = patientBucket(p);
-            String category = labels.category(p.getMetadata() == null ? null : p.getMetadata().getBodyPart());
-            int group = groupKey(p);
-            tree.computeIfAbsent(bucket, k -> new LinkedHashMap<String, Map<Integer, List<Protocol>>>())
-                    .computeIfAbsent(category, k -> new LinkedHashMap<Integer, List<Protocol>>())
-                    .computeIfAbsent(group, k -> new ArrayList<Protocol>())
+            tree.computeIfAbsent(bucket, k -> new LinkedHashMap<Integer, List<Protocol>>())
+                    .computeIfAbsent(prefix, k -> new ArrayList<Protocol>())
                     .add(p);
         }
-        for (Map<String, Map<Integer, List<Protocol>>> byCategory : tree.values())
-            for (Map<Integer, List<Protocol>> byGroup : byCategory.values())
-                for (List<Protocol> group : byGroup.values())
-                    group.sort(Comparator.comparingDouble(this::sortKey));
+        for (Map<Integer, List<Protocol>> byGroup : tree.values())
+            for (List<Protocol> group : byGroup.values())
+                group.sort(Comparator.comparingDouble(this::sortKey));
 
         List<String> buckets = new ArrayList<String>(tree.keySet());
         buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
 
         Map<Protocol, String> ids = new IdentityHashMap<Protocol, String>();
+        Map<String, Protocol> byNumber = new HashMap<String, Protocol>();
         int index = 0;
         for (String bucket : buckets)
-            for (String category : sortedCategories(tree.get(bucket)))
-                for (Integer group : sortedGroups(tree.get(bucket).get(category)))
-                    for (Protocol p : tree.get(bucket).get(category).get(group))
-                        ids.put(p, protocolId(p, index++));
+            for (Integer prefix : sortedGroups(tree.get(bucket)))
+                for (Protocol p : tree.get(bucket).get(prefix)) {
+                    ids.put(p, protocolId(p, index++));
+                    String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+                    if (number != null) byNumber.put(number, p);
+                }
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
@@ -77,39 +80,32 @@ public class ProtocolBookHtmlWriter {
         if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
         html.append("<ul>\n");
         for (String bucket : buckets) {
-            Map<String, Map<Integer, List<Protocol>>> byCategory = tree.get(bucket);
+            Map<Integer, List<Protocol>> byGroup = tree.get(bucket);
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
                     .append("<span class=\"nav-icon\">").append(categoryInitial(bucket)).append("</span>")
-                    .append("<span class=\"nav-text\">").append(HtmlSupport.esc(bucket)).append(" (").append(bucketCount(byCategory)).append(")</span></a>\n");
+                    .append("<span class=\"nav-text\">").append(HtmlSupport.esc(bucket)).append(" (").append(count(byGroup)).append(")</span></a>\n");
             html.append("<ul class=\"submenu\">\n");
-            for (String category : sortedCategories(byCategory)) {
-                Map<Integer, List<Protocol>> byGroup = byCategory.get(category);
+            for (Integer prefix : sortedGroups(byGroup)) {
+                List<Protocol> groupProtocols = byGroup.get(prefix);
                 html.append("<li class=\"menu-subcat\">\n<a href=\"#\" class=\"subcat-link\" onclick=\"return toggleMenu(this);\">")
-                        .append(HtmlSupport.esc(category)).append(" (").append(categoryCount(byGroup)).append(")</a>\n");
+                        .append(HtmlSupport.esc(labels.categoryForNumber(prefix))).append(" (").append(groupProtocols.size()).append(")</a>\n");
                 html.append("<ul class=\"submenu\">\n");
-                for (Integer group : sortedGroups(byGroup)) {
-                    List<Protocol> groupProtocols = byGroup.get(group);
-                    html.append("<li class=\"menu-group\">\n<a href=\"#\" class=\"group-link\" onclick=\"return toggleMenu(this);\">")
-                            .append(HtmlSupport.esc(groupLabel(group, groupProtocols))).append(" (").append(groupProtocols.size()).append(")</a>\n");
-                    html.append("<ul class=\"submenu\">\n");
-                    for (Protocol p : groupProtocols) {
-                        String id = ids.get(p);
-                        Metadata m = p.getMetadata();
-                        html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
-                                .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
-                                .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
-                                .append(HtmlSupport.esc(displayName(p, overrides))).append("</a></li>\n");
-                    }
-                    html.append("</ul>\n</li>\n");
+                for (Protocol p : groupProtocols) {
+                    String id = ids.get(p);
+                    Metadata m = p.getMetadata();
+                    html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
+                            .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                            .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
+                            .append(HtmlSupport.esc(displayName(p, overrides))).append("</a></li>\n");
                 }
                 html.append("</ul>\n</li>\n");
             }
             html.append("</ul>\n</li>\n");
         }
-        if (!recentlyChanged.isEmpty()) {
+        if (changelog != null && !changelog.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
                     .append("<span class=\"nav-icon\"><span>R</span></span>")
-                    .append("<span class=\"nav-text\">Recent Changes (").append(recentlyChanged.size()).append(")</span></a>\n</li>\n");
+                    .append("<span class=\"nav-text\">Recent Changes (").append(changelog.size()).append(")</span></a>\n</li>\n");
         }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
@@ -128,15 +124,14 @@ public class ProtocolBookHtmlWriter {
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
-        if (!recentlyChanged.isEmpty()) appendRecentChanges(html, recentlyChanged, overrides, ids, recentChangesDays);
+        if (changelog != null && !changelog.isEmpty()) appendRecentChanges(html, changelog, ids, byNumber);
         for (String bucket : buckets)
-            for (String category : sortedCategories(tree.get(bucket)))
-                for (Integer group : sortedGroups(tree.get(bucket).get(category)))
-                    for (Protocol p : tree.get(bucket).get(category).get(group)) {
-                        html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
-                        appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
-                        html.append("</section>\n");
-                    }
+            for (Integer prefix : sortedGroups(tree.get(bucket)))
+                for (Protocol p : tree.get(bucket).get(prefix)) {
+                    html.append("<section id=\"").append(ids.get(p)).append("\" class=\"protocol-view\" style=\"display:none;\">\n");
+                    appendProtocol(html, p, overrides, labels, logoDataUri, protocolImages);
+                    html.append("</section>\n");
+                }
         html.append("</main>\n");
 
         html.append("<script>").append(JS).append("</script>\n");
@@ -147,27 +142,15 @@ public class ProtocolBookHtmlWriter {
         return outFile;
     }
 
-    private List<String> sortedCategories(Map<String, Map<Integer, List<Protocol>>> byCategory) {
-        List<String> categories = new ArrayList<String>(byCategory.keySet());
-        categories.sort(Comparator.comparingInt(this::categoryRank).thenComparing(Comparator.naturalOrder()));
-        return categories;
-    }
-
     private List<Integer> sortedGroups(Map<Integer, List<Protocol>> byGroup) {
         List<Integer> groups = new ArrayList<Integer>(byGroup.keySet());
-        groups.sort(Comparator.naturalOrder()); // Integer.MAX_VALUE ("Other"/unparseable) sorts last on its own
+        groups.sort(Comparator.naturalOrder());
         return groups;
     }
 
-    private int categoryCount(Map<Integer, List<Protocol>> byGroup) {
+    private int count(Map<Integer, List<Protocol>> byGroup) {
         int total = 0;
         for (List<Protocol> list : byGroup.values()) total += list.size();
-        return total;
-    }
-
-    private int bucketCount(Map<String, Map<Integer, List<Protocol>>> byCategory) {
-        int total = 0;
-        for (Map<Integer, List<Protocol>> byGroup : byCategory.values()) total += categoryCount(byGroup);
         return total;
     }
 
@@ -184,24 +167,8 @@ public class ProtocolBookHtmlWriter {
     // Whole-number prefix of the protocol number (e.g. 9 from "9.2") - GE's own grouping convention.
     private int groupKey(Protocol p) {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null) return Integer.MAX_VALUE;
-        try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MAX_VALUE; }
-    }
-
-    // Labels a number-group with whichever GE body part (protocolmetadata.json's anatomyRegion) is
-    // most common among its protocols, rather than a hardcoded/guessed name.
-    private String groupLabel(int key, List<Protocol> group) {
-        if (key == Integer.MAX_VALUE) return "Other";
-        Map<String, Integer> counts = new LinkedHashMap<String, Integer>();
-        for (Protocol p : group) {
-            String bodyPart = p.getMetadata() == null ? null : p.getMetadata().getBodyPart();
-            if (bodyPart == null || bodyPart.trim().isEmpty()) continue;
-            counts.merge(bodyPart, 1, Integer::sum);
-        }
-        String best = null; int bestCount = 0;
-        for (Map.Entry<String, Integer> e : counts.entrySet()) if (e.getValue() > bestCount) { best = e.getKey(); bestCount = e.getValue(); }
-        String raw = best != null ? best : ("Group " + key);
-        return Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
+        if (number == null) return Integer.MIN_VALUE;
+        try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MIN_VALUE; }
     }
 
     private String protocolId(Protocol p, int index) {
@@ -212,11 +179,6 @@ public class ProtocolBookHtmlWriter {
 
     private String categoryInitial(String category) {
         return category == null || category.isEmpty() ? "?" : category.substring(0, 1).toUpperCase(Locale.ROOT);
-    }
-
-    private int categoryRank(String category) {
-        int idx = CATEGORY_ORDER.indexOf(category);
-        return idx >= 0 ? idx : CATEGORY_ORDER.size();
     }
 
     // A "title" override renames how a protocol displays in the book without touching its
@@ -307,7 +269,6 @@ public class ProtocolBookHtmlWriter {
         if (a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
         if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
-        if (a.getDetector() != null) html.append(" &middot; Detector: ").append(HtmlSupport.esc(labels.detector(a.getDetector())));
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
@@ -335,48 +296,24 @@ public class ProtocolBookHtmlWriter {
         } catch (Exception e) { return Double.MAX_VALUE; }
     }
 
-    // protocolmetadata.json's "lastUpdatedDateTime" - the scanner's own record of when a protocol was
-    // last saved, not anything this tool tracks itself. Same format ProtocolFolderWalker parses for dedup.
-    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxx");
-    private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
-
-    private static OffsetDateTime parseTimestamp(String value) {
-        if (value == null || value.isEmpty()) return null;
-        try { return OffsetDateTime.parse(value, TIMESTAMP_FORMAT); }
-        catch (Exception e) { return null; }
-    }
-
-    // Protocols (not excluded) whose scanner lastUpdatedDateTime falls within the last N days,
-    // most-recently-changed first. recentChangesDays <= 0 disables the feature entirely (no
-    // window to check against, and no "Recent Changes" entry shows up in the sidebar).
-    private List<Protocol> recentlyChangedProtocols(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, int recentChangesDays) {
-        if (recentChangesDays <= 0) return Collections.emptyList();
-        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(recentChangesDays);
-        List<Protocol> recent = new ArrayList<Protocol>();
-        for (Protocol p : protocols) {
-            if (isExcluded(p, overrides)) continue;
-            OffsetDateTime updated = parseTimestamp(p.getMetadata() == null ? null : p.getMetadata().getLastUpdated());
-            if (updated != null && updated.isAfter(cutoff)) recent.add(p);
-        }
-        recent.sort((a, b) -> parseTimestamp(b.getMetadata().getLastUpdated()).compareTo(parseTimestamp(a.getMetadata().getLastUpdated())));
-        return recent;
-    }
-
-    private void appendRecentChanges(StringBuilder html, List<Protocol> recentlyChanged, Map<String, ProtocolOverride> overrides,
-                                      Map<Protocol, String> ids, int recentChangesDays) {
+    // Hand-typed log of what changed and why (see Changelog) - not derived from the scanner
+    // export, since protocolmetadata.json's lastUpdatedDateTime says a file changed but not what
+    // changed or why. Rows are already sorted newest-first by Changelog.load().
+    private void appendRecentChanges(StringBuilder html, List<Changelog.Entry> changelog, Map<Protocol, String> ids, Map<String, Protocol> byNumber) {
         html.append("<section id=\"recent-changes\" class=\"protocol-view\" style=\"display:none;\">\n");
-        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Protocols updated on the scanner in the last ")
-                .append(recentChangesDays).append(" days.</p>\n");
-        html.append("<table>\n<tr><th>Protocol</th><th>Name</th><th>Body Part</th><th>Last Updated</th></tr>\n");
-        for (Protocol p : recentlyChanged) {
-            Metadata m = p.getMetadata();
-            String id = ids.get(p);
-            OffsetDateTime updated = parseTimestamp(m.getLastUpdated());
-            html.append("<tr><td><a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
-                    .append(HtmlSupport.esc(m.getProtocolNumber())).append("</a></td><td>")
-                    .append(HtmlSupport.esc(displayName(p, overrides))).append("</td><td>")
-                    .append(HtmlSupport.esc(m.getBodyPart())).append("</td><td>")
-                    .append(updated == null ? "" : DISPLAY_DATE_FORMAT.format(updated)).append("</td></tr>\n");
+        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Hand-maintained log of what changed and why - see changelog.json.</p>\n");
+        html.append("<table>\n<tr><th>Date</th><th>Protocol</th><th>Note</th></tr>\n");
+        for (Changelog.Entry entry : changelog) {
+            Protocol p = entry.protocolNumber == null ? null : byNumber.get(entry.protocolNumber);
+            String id = p == null ? null : ids.get(p);
+            html.append("<tr><td>").append(HtmlSupport.esc(entry.displayDate())).append("</td><td>");
+            if (id != null) {
+                html.append("<a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                        .append(HtmlSupport.esc(entry.protocolNumber)).append("</a>");
+            } else {
+                html.append(HtmlSupport.esc(entry.protocolNumber));
+            }
+            html.append("</td><td>").append(HtmlSupport.esc(entry.note)).append("</td></tr>\n");
         }
         html.append("</table>\n</section>\n");
     }
@@ -390,12 +327,11 @@ public class ProtocolBookHtmlWriter {
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
             // Sidebar - collapsed to an icon rail; every level, including the rail's own width, only
-            // reacts to clicks (see toggleMenu in JS), never hover - hover-driven opening/widening was
-            // cumbersome to navigate once there were three nested drill-down levels.
-            // menu-category (Adult/Pediatric/PDF library) -> menu-subcat (Neuro/Body/MSK/Other) -> menu-group (specific body part).
+            // reacts to clicks (see toggleMenu in JS), never hover.
+            // menu-category (Adult/Pediatric/Recent Changes/PDF library) -> menu-subcat (1-9 reading category, e.g. "Chest").
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
-            ".main-menu.expanded{width:340px;}" +
+            ".main-menu.expanded{width:320px;}" +
             ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
             ".menu-logo img{max-width:44px;max-height:44px;}" +
             ".main-menu.expanded .menu-logo img{max-width:220px;}" +
@@ -416,13 +352,6 @@ public class ProtocolBookHtmlWriter {
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.08);}" +
             ".subcat-link:hover,.menu-subcat.open>.subcat-link{background:var(--ahs-orange-dark);}" +
             ".menu-subcat.open>.submenu{display:block;}" +
-
-            ".menu-group{border-top:1px solid rgba(255,255,255,.10);}" +
-            ".group-link{display:block;padding:9px 14px 9px 72px;color:#fff;text-decoration:none;font-weight:500;font-size:13px;" +
-            "cursor:pointer;white-space:normal;background:rgba(0,0,0,.16);}" +
-            ".group-link:hover,.menu-group.open>.group-link{background:var(--ahs-orange-dark);}" +
-            ".menu-group.open>.submenu{display:block;}" +
-            ".menu-group>.submenu a{padding-left:88px;}" +
 
             ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
             "white-space:normal;border-top:1px solid rgba(255,255,255,.12);}" +
@@ -457,10 +386,10 @@ public class ProtocolBookHtmlWriter {
             "document.querySelectorAll('.submenu a').forEach(function(a){a.classList.remove('active');});" +
             "var link=document.querySelector('.submenu a[data-target=\"'+id+'\"]');if(link)link.classList.add('active');" +
             "window.scrollTo(0,0);}" +
-            // Generic drill-down toggle shared by every sidebar level (menu-category/menu-subcat/menu-group):
+            // Generic drill-down toggle shared by both sidebar levels (menu-category/menu-subcat):
             // opens the clicked node and closes its siblings at the same level, leaving ancestor/descendant levels alone.
             // Nothing here reacts to hover - the sidebar is entirely click-driven, including its own
-            // collapsed/expanded width, which now follows whether a top-level item is open, not the mouse.
+            // collapsed/expanded width, which follows whether a top-level item is open, not the mouse.
             "function toggleMenu(el){" +
             "var li=el.parentElement;var siblingsUl=li.parentElement;var wasOpen=li.classList.contains('open');" +
             "Array.prototype.forEach.call(siblingsUl.children,function(sib){sib.classList.remove('open');});" +
