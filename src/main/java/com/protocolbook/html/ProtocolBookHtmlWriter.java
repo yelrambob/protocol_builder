@@ -384,7 +384,7 @@ public class ProtocolBookHtmlWriter {
     // Best-effort Atlantic Health System palette (menu orange, main panel blue) - not sourced from an
     // official brand guide, so swap these hex values if AHS's real brand colors differ.
     private static final String CSS =
-            ":root{--ahs-blue:#003057;--ahs-blue-accent:#0072ce;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
+            ":root{--ahs-blue:#044281;--ahs-blue-accent:#044281;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
             "*{box-sizing:border-box;}" +
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
