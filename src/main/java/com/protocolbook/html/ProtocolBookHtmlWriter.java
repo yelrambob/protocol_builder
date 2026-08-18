@@ -10,8 +10,10 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * Renders the parsed protocols as a single self-contained HTML app: a hover-expandable sidebar
- * drilling down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
+ * Renders the parsed protocols as a single self-contained HTML app: a click-to-expand sidebar
+ * (collapsed rail widens on hover, but each drill-down level only opens on click - hover-to-open
+ * was cumbersome to navigate with several nested levels) drilling down Adult/Pediatric (from
+ * {@link Metadata#getPatientType}) -> reading category
  * (Neuro/Body/MSK/Other, guessed from body part - see {@link LabelConfig#category}) -> a specific
  * group keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together)
  * and labeled with whichever GE body part is most common among its protocols -> individual
@@ -33,7 +35,9 @@ public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
-                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages, File outFile) throws IOException {
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
+                       String bookTitle, File outFile) throws IOException {
+        String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
         // bucket (Adult/Pediatric) -> category (Neuro/Body/MSK/Other) -> group (protocol-number prefix) -> protocols
         Map<String, Map<String, Map<Integer, List<Protocol>>>> tree = new LinkedHashMap<String, Map<String, Map<Integer, List<Protocol>>>>();
         for (Protocol p : protocols) {
@@ -63,7 +67,7 @@ public class ProtocolBookHtmlWriter {
                         ids.put(p, protocolId(p, index++));
 
         StringBuilder html = new StringBuilder();
-        html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Protocol Book</title>\n");
+        html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
         html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n");
 
         html.append("<nav class=\"main-menu\">\n");
@@ -115,7 +119,7 @@ public class ProtocolBookHtmlWriter {
         html.append("<main class=\"main-content\">\n");
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
-        html.append("<h1>Protocol Book</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
         for (String bucket : buckets)
             for (String category : sortedCategories(tree.get(bucket)))
                 for (Integer group : sortedGroups(tree.get(bucket).get(category)))
@@ -330,8 +334,9 @@ public class ProtocolBookHtmlWriter {
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
-            // Sidebar - collapsed to an icon rail, hover (or click, for touchscreens) expands it.
-            // Three drill-down levels share the same open/hover mechanic (see toggleMenu in JS):
+            // Sidebar - collapsed to an icon rail; hovering it widens the rail so labels are readable,
+            // but each drill-down level only opens on click (see toggleMenu in JS) - hovering to open
+            // nested submenus was cumbersome once there were three levels to navigate through.
             // menu-category (Adult/Pediatric/PDF library) -> menu-subcat (Neuro/Body/MSK/Other) -> menu-group (specific body part).
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
@@ -349,19 +354,19 @@ public class ProtocolBookHtmlWriter {
             "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
             ".nav-text{display:inline-block;}" +
             ".submenu{display:none;background:rgba(0,0,0,.15);}" +
-            ".menu-category:hover>.submenu,.menu-category.open>.submenu{display:block;}" +
+            ".menu-category.open>.submenu{display:block;}" +
 
             ".menu-subcat{border-top:1px solid rgba(255,255,255,.15);}" +
             ".subcat-link{display:block;padding:10px 14px 10px 56px;color:#fff;text-decoration:none;font-weight:600;font-size:14px;" +
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.08);}" +
             ".subcat-link:hover,.menu-subcat.open>.subcat-link{background:var(--ahs-orange-dark);}" +
-            ".menu-subcat:hover>.submenu,.menu-subcat.open>.submenu{display:block;}" +
+            ".menu-subcat.open>.submenu{display:block;}" +
 
             ".menu-group{border-top:1px solid rgba(255,255,255,.10);}" +
             ".group-link{display:block;padding:9px 14px 9px 72px;color:#fff;text-decoration:none;font-weight:500;font-size:13px;" +
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.16);}" +
             ".group-link:hover,.menu-group.open>.group-link{background:var(--ahs-orange-dark);}" +
-            ".menu-group:hover>.submenu,.menu-group.open>.submenu{display:block;}" +
+            ".menu-group.open>.submenu{display:block;}" +
             ".menu-group>.submenu a{padding-left:88px;}" +
 
             ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
