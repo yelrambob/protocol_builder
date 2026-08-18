@@ -7,6 +7,8 @@ import com.protocolbook.overrides.ProtocolOverride;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -36,8 +38,9 @@ public class ProtocolBookHtmlWriter {
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
-                       String bookTitle, File outFile) throws IOException {
+                       String bookTitle, int recentChangesDays, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
+        List<Protocol> recentlyChanged = recentlyChangedProtocols(protocols, overrides, recentChangesDays);
         // bucket (Adult/Pediatric) -> category (Neuro/Body/MSK/Other) -> group (protocol-number prefix) -> protocols
         Map<String, Map<String, Map<Integer, List<Protocol>>>> tree = new LinkedHashMap<String, Map<String, Map<Integer, List<Protocol>>>>();
         for (Protocol p : protocols) {
@@ -103,6 +106,11 @@ public class ProtocolBookHtmlWriter {
             }
             html.append("</ul>\n</li>\n");
         }
+        if (!recentlyChanged.isEmpty()) {
+            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
+                    .append("<span class=\"nav-icon\"><span>R</span></span>")
+                    .append("<span class=\"nav-text\">Recent Changes (").append(recentlyChanged.size()).append(")</span></a>\n</li>\n");
+        }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
                     .append("<span class=\"nav-icon\"><span>S</span></span>")
@@ -120,6 +128,7 @@ public class ProtocolBookHtmlWriter {
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
         if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
         html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
+        if (!recentlyChanged.isEmpty()) appendRecentChanges(html, recentlyChanged, overrides, ids, recentChangesDays);
         for (String bucket : buckets)
             for (String category : sortedCategories(tree.get(bucket)))
                 for (Integer group : sortedGroups(tree.get(bucket).get(category)))
@@ -324,6 +333,52 @@ public class ProtocolBookHtmlWriter {
             int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
             return major + minor / 10000.0; // keeps "9.10" after "9.2" (minor compared as an integer, not a decimal)
         } catch (Exception e) { return Double.MAX_VALUE; }
+    }
+
+    // protocolmetadata.json's "lastUpdatedDateTime" - the scanner's own record of when a protocol was
+    // last saved, not anything this tool tracks itself. Same format ProtocolFolderWalker parses for dedup.
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSxx");
+    private static final DateTimeFormatter DISPLAY_DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
+
+    private static OffsetDateTime parseTimestamp(String value) {
+        if (value == null || value.isEmpty()) return null;
+        try { return OffsetDateTime.parse(value, TIMESTAMP_FORMAT); }
+        catch (Exception e) { return null; }
+    }
+
+    // Protocols (not excluded) whose scanner lastUpdatedDateTime falls within the last N days,
+    // most-recently-changed first. recentChangesDays <= 0 disables the feature entirely (no
+    // window to check against, and no "Recent Changes" entry shows up in the sidebar).
+    private List<Protocol> recentlyChangedProtocols(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, int recentChangesDays) {
+        if (recentChangesDays <= 0) return Collections.emptyList();
+        OffsetDateTime cutoff = OffsetDateTime.now().minusDays(recentChangesDays);
+        List<Protocol> recent = new ArrayList<Protocol>();
+        for (Protocol p : protocols) {
+            if (isExcluded(p, overrides)) continue;
+            OffsetDateTime updated = parseTimestamp(p.getMetadata() == null ? null : p.getMetadata().getLastUpdated());
+            if (updated != null && updated.isAfter(cutoff)) recent.add(p);
+        }
+        recent.sort((a, b) -> parseTimestamp(b.getMetadata().getLastUpdated()).compareTo(parseTimestamp(a.getMetadata().getLastUpdated())));
+        return recent;
+    }
+
+    private void appendRecentChanges(StringBuilder html, List<Protocol> recentlyChanged, Map<String, ProtocolOverride> overrides,
+                                      Map<Protocol, String> ids, int recentChangesDays) {
+        html.append("<section id=\"recent-changes\" class=\"protocol-view\" style=\"display:none;\">\n");
+        html.append("<h2>Recent Changes</h2>\n<p class=\"meta\">Protocols updated on the scanner in the last ")
+                .append(recentChangesDays).append(" days.</p>\n");
+        html.append("<table>\n<tr><th>Protocol</th><th>Name</th><th>Body Part</th><th>Last Updated</th></tr>\n");
+        for (Protocol p : recentlyChanged) {
+            Metadata m = p.getMetadata();
+            String id = ids.get(p);
+            OffsetDateTime updated = parseTimestamp(m.getLastUpdated());
+            html.append("<tr><td><a href=\"#").append(id).append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
+                    .append(HtmlSupport.esc(m.getProtocolNumber())).append("</a></td><td>")
+                    .append(HtmlSupport.esc(displayName(p, overrides))).append("</td><td>")
+                    .append(HtmlSupport.esc(m.getBodyPart())).append("</td><td>")
+                    .append(updated == null ? "" : DISPLAY_DATE_FORMAT.format(updated)).append("</td></tr>\n");
+        }
+        html.append("</table>\n</section>\n");
     }
 
     // Best-effort Atlantic Health System palette (menu orange, main panel blue) - not sourced from an
