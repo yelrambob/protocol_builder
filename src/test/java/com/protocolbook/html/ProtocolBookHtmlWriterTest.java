@@ -42,12 +42,21 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains(">8.2 &mdash; CT LWR EXT HIP WITH CONTRAST<"), "non-excluded protocol with the same name must still appear");
         assertTrue(html.contains("Pad under the knee for comfort."), "manual scanning note must be rendered");
         assertTrue(html.contains("AXIAL KNEE DET 2.5MM"), "recon display name should still show up");
+        // all fixture protocols are adult, so there should be exactly one top-level bucket
+        long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
+        assertEquals(1, bucketCount, "should be one Adult bucket, no Pediatric bucket without any pediatric protocols");
+        assertTrue(html.contains(">Adult ("));
+
         // body parts present: lower/upper Extremities -> MSK, neck/spine -> Neuro, pelvis -> Body
-        long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(3, categoryCount, "should be grouped into 3 reading categories, not one section per protocol-number prefix");
+        long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-subcat\"")).count();
+        assertEquals(3, categoryCount, "should be grouped into 3 reading categories under Adult, not one section per protocol-number prefix");
         assertTrue(html.contains(">MSK ("));
         assertTrue(html.contains(">Body ("));
         assertTrue(html.contains(">Neuro ("));
+
+        // within MSK, protocol numbers 4.x/9.x should form separate specific groups labeled by GE's own body part
+        assertTrue(html.contains(">Lower Extremities ("), "9.x protocols should form a specific group labeled by GE's anatomyRegion");
+        assertTrue(html.contains(">Upper Extremities ("), "4.x protocols should form a separate specific group");
 
         // every protocol section starts hidden; only the welcome view is visible until something is clicked
         long hiddenSections = html.lines().filter(l -> l.contains("class=\"protocol-view\" style=\"display:none;\"")).count();
@@ -90,6 +99,59 @@ class ProtocolBookHtmlWriterTest {
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
         // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
         assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
+    }
+
+    @Test void splitsPediatricProtocolsIntoTheirOwnTopLevelBucket(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        protocols.get(0).getMetadata().setPatientType("Pediatric");
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains(">Adult (11)<"), "the other 11 protocols should stay under Adult");
+        assertTrue(html.contains(">Pediatric (1)<"), "the one re-flagged protocol should form its own Pediatric bucket");
+    }
+
+    @Test void titleOverrideRenamesProtocolWithoutChangingItsNumber(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        Map<String, ProtocolOverride> overrides = new HashMap<>();
+        ProtocolOverride renamed = new ProtocolOverride();
+        renamed.setTitle("Knee Protocol (Renamed)");
+        overrides.put("9.2", renamed);
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, overrides,
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains(">9.2 &mdash; Knee Protocol (Renamed)<"), "sidebar link should use the title override");
+        assertTrue(html.contains("<h2>9.2 &mdash; Knee Protocol (Renamed)</h2>"), "protocol page header should use the title override");
+        assertFalse(html.contains("CT LWR EXT KNEE WITH CONTRAST"), "the original scanner name should no longer appear once overridden");
+    }
+
+    @Test void contrastInfoIsOmittedFromScoutSeries(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        // force a scout series to look like it carries IV contrast, matching what the scanner export can do
+        for (Protocol p : protocols) for (com.protocolbook.model.Series s : p.getSeries())
+            if (s.getScanType() != null && s.getScanType().equalsIgnoreCase("Scout") && s.getContrast() != null) {
+                s.getContrast().setIv(true);
+                s.getContrast().setIvVolume("100");
+                s.getContrast().setFlowRate("3");
+            }
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        // the scout table (Plane/kV/mA) must never be preceded by a contrast paragraph
+        int scoutTableIndex = html.indexOf("<th>Plane</th><th>kV</th><th>mA</th>");
+        assertTrue(scoutTableIndex > 0, "fixtures should still include a scout series");
+        int precedingSeriesStart = html.lastIndexOf("<div class=\"series\">", scoutTableIndex);
+        String scoutBlock = html.substring(precedingSeriesStart, scoutTableIndex);
+        assertFalse(scoutBlock.contains("class=\"contrast\""), "scout series must never show injection rate/volume");
     }
 
     @Test void rendersDetectorLabelWhenSupplied(@TempDir Path tempDir) throws Exception {
@@ -159,9 +221,9 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/knee-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Knee Replacement Planning Guide</a>"));
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/hip-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Hip Replacement Planning Guide</a>"));
-        // 4 total: Neuro/Body/MSK reading categories + this new PDF library category
-        long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(4, categoryCount);
+        // 2 top-level buckets: Adult (all fixture protocols) + this new PDF library entry
+        long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
+        assertEquals(2, bucketCount);
     }
 
     @Test void omitsPdfLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
