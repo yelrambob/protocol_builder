@@ -10,10 +10,10 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * Renders the parsed protocols as a single self-contained HTML app: a click-to-expand sidebar
- * (collapsed rail widens on hover, but each drill-down level only opens on click - hover-to-open
- * was cumbersome to navigate with several nested levels) drilling down Adult/Pediatric (from
- * {@link Metadata#getPatientType}) -> reading category
+ * Renders the parsed protocols as a single self-contained HTML app: a click-only sidebar (nothing
+ * opens or expands on hover - that was cumbersome to navigate with several nested drill-down
+ * levels; clicking a top-level entry both opens it and widens the collapsed icon rail) drilling
+ * down Adult/Pediatric (from {@link Metadata#getPatientType}) -> reading category
  * (Neuro/Body/MSK/Other, guessed from body part - see {@link LabelConfig#category}) -> a specific
  * group keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together)
  * and labeled with whichever GE body part is most common among its protocols -> individual
@@ -334,16 +334,16 @@ public class ProtocolBookHtmlWriter {
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
-            // Sidebar - collapsed to an icon rail; hovering it widens the rail so labels are readable,
-            // but each drill-down level only opens on click (see toggleMenu in JS) - hovering to open
-            // nested submenus was cumbersome once there were three levels to navigate through.
+            // Sidebar - collapsed to an icon rail; every level, including the rail's own width, only
+            // reacts to clicks (see toggleMenu in JS), never hover - hover-driven opening/widening was
+            // cumbersome to navigate once there were three nested drill-down levels.
             // menu-category (Adult/Pediatric/PDF library) -> menu-subcat (Neuro/Body/MSK/Other) -> menu-group (specific body part).
             ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
-            ".main-menu:hover,.main-menu.expanded{width:340px;}" +
+            ".main-menu.expanded{width:340px;}" +
             ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
             ".menu-logo img{max-width:44px;max-height:44px;}" +
-            ".main-menu:hover .menu-logo img,.main-menu.expanded .menu-logo img{max-width:220px;}" +
+            ".main-menu.expanded .menu-logo img{max-width:220px;}" +
             ".main-menu ul{list-style:none;margin:0;padding:6px 0;}" +
             ".menu-category{border-top:1px solid rgba(255,255,255,.25);}" +
             ".menu-category:first-child{border-top:none;}" +
@@ -404,8 +404,13 @@ public class ProtocolBookHtmlWriter {
             "window.scrollTo(0,0);}" +
             // Generic drill-down toggle shared by every sidebar level (menu-category/menu-subcat/menu-group):
             // opens the clicked node and closes its siblings at the same level, leaving ancestor/descendant levels alone.
+            // Nothing here reacts to hover - the sidebar is entirely click-driven, including its own
+            // collapsed/expanded width, which now follows whether a top-level item is open, not the mouse.
             "function toggleMenu(el){" +
             "var li=el.parentElement;var siblingsUl=li.parentElement;var wasOpen=li.classList.contains('open');" +
             "Array.prototype.forEach.call(siblingsUl.children,function(sib){sib.classList.remove('open');});" +
-            "if(!wasOpen)li.classList.add('open');return false;}";
+            "if(!wasOpen)li.classList.add('open');" +
+            "if(li.classList.contains('menu-category')){" +
+            "var menu=li.closest('.main-menu');if(menu)menu.classList.toggle('expanded',!wasOpen);}" +
+            "return false;}";
 }

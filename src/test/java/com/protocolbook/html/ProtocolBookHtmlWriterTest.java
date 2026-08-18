@@ -293,5 +293,10 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains(".menu-category.open>.submenu{display:block;}"));
         assertTrue(html.contains(".menu-subcat.open>.submenu{display:block;}"));
         assertTrue(html.contains(".menu-group.open>.submenu{display:block;}"));
+
+        // the rail's own collapsed/expanded width must also be click-driven, not hover-driven
+        assertFalse(html.contains(".main-menu:hover"), "the sidebar rail must not widen on hover either - only a click should expand it");
+        assertTrue(html.contains(".main-menu.expanded{width:340px;}"));
+        assertTrue(html.contains("menu.classList.toggle('expanded'"), "clicking a top-level entry should drive the rail's expanded state");
     }
 }
