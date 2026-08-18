@@ -15,7 +15,7 @@ import java.util.*;
  * {@link LabelConfig#category}), and a main panel that shows exactly one protocol at a time,
  * toggled by a small inline script (no external JS/CSS/fonts - everything is embedded so the
  * file works offline). Protocols flagged excluded in the overrides are left out entirely;
- * protocols with manual scanning notes show them inline.
+ * protocols with manual scanning notes/send destination show them inline.
  * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
  * its own top-level sidebar category, linking out with target="_blank" since those files live
  * on a different server than wherever this book itself ends up hosted.
@@ -138,6 +138,9 @@ public class ProtocolBookHtmlWriter {
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
             html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(HtmlSupport.esc(override.getNotes())).append("</div>\n");
         }
+        if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
+            html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
+        }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
             html.append("<p class=\"dose\">Exam CTDIvol: ").append(HtmlSupport.esc(p.getDose().getCtdi())).append(" mGy &middot; DLP: ")
@@ -188,6 +191,7 @@ public class ProtocolBookHtmlWriter {
         if (a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
         if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
+        if (a.getDetector() != null) html.append(" &middot; Detector: ").append(HtmlSupport.esc(labels.detector(a.getDetector())));
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(g.getDose().getCtdi())).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
@@ -256,7 +260,7 @@ public class ProtocolBookHtmlWriter {
             ".protocol-image{display:block;max-width:100%;max-height:400px;margin:0 auto 1rem;border-radius:6px;}" +
             "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
-            ".meta,.dose{color:#555;font-size:.9rem;}" +
+            ".meta,.dose,.destination{color:#555;font-size:.9rem;}" +
             ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
             ".series{margin:1rem 0 1rem 1rem;padding-left:1rem;border-left:3px solid #dbe7f3;}" +
             "table{border-collapse:collapse;width:100%;margin:.4rem 0 1rem;}" +

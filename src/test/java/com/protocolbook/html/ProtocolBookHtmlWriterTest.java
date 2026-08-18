@@ -33,7 +33,7 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", kneeNotes); // "CT LWR EXT KNEE WITH CONTRAST"
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>());
+        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>());
         new ProtocolBookHtmlWriter().write(protocols, overrides, labels, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -66,7 +66,7 @@ class ProtocolBookHtmlWriterTest {
         kernelLabels.put("8", "STD");
 
         File out = tempDir.resolve("book.html").toFile();
-        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
+        LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>(), new HashMap<>()); // default plane labels apply
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
@@ -84,7 +84,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
@@ -92,12 +92,40 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
     }
 
+    @Test void rendersDetectorLabelWhenSupplied(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        Map<String, String> detectorLabels = new HashMap<>();
+        detectorLabels.put("64", "64 slice/40mm");
+
+        File out = tempDir.resolve("book.html").toFile();
+        LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), detectorLabels);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("Detector:"), "acquisition line should show the detector label when a code is present");
+    }
+
+    @Test void rendersSendDestinationFromOverrides(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        Map<String, ProtocolOverride> overrides = new HashMap<>();
+        ProtocolOverride kneeDestination = new ProtocolOverride();
+        kneeDestination.setSendDestination("AHSPACS + 3D Lab");
+        overrides.put("9.2", kneeDestination);
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, overrides,
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("<p class=\"destination\">Sends to: AHSPACS + 3D Lab</p>"), "send destination should be rendered on the protocol page");
+    }
+
     @Test void embedsLogoInMenuWelcomeAndEveryProtocolWhenProvided(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         String logoDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), logoDataUri, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<div class=\"menu-logo\"><img src=\"" + logoDataUri + "\""), "logo should appear at the top of the sidebar");
@@ -109,7 +137,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsLogoElementsWhenNoneProvided(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // CSS rules for these classes are always present (static styling); only the rendered <img>/<div> markup should be absent
@@ -125,7 +153,7 @@ class ProtocolBookHtmlWriterTest {
                 new PdfLibrary.Entry("Knee Replacement Planning Guide", "https://example.com/pdfs/knee-planning.pdf"),
                 new PdfLibrary.Entry("Hip Replacement Planning Guide", "https://example.com/pdfs/hip-planning.pdf"));
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, pdfLibrary, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, pdfLibrary, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
@@ -140,7 +168,7 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("Surgical Planning Protocols"));
@@ -151,7 +179,7 @@ class ProtocolBookHtmlWriterTest {
         File out = tempDir.resolve("book.html").toFile();
         ProtocolImages images = new ProtocolImages("https://example.com/protocol-images", "png");
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, images, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, images, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<img class=\"protocol-image\" src=\"https://example.com/protocol-images/9.2.png\" "
@@ -164,7 +192,7 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(),
-                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
+                new LabelConfig(new HashMap<>(), new HashMap<>(), new HashMap<>(), new HashMap<>()), null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("class=\"protocol-image\""));
