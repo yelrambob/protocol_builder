@@ -11,12 +11,13 @@ import java.util.Map;
  * recon kernel numbers (site-specific, must come from kernel-labels.json - there's no way to
  * derive "STD"/"DTL"/"BN+" from the export alone), scout plane angles (seeded with the standard
  * GE convention, overridable per site via plane-labels.json), and the reading category for a
- * protocol number's whole-number prefix (seeded with the scanner console's own 1-9 numbering -
- * see {@link #DEFAULT_CATEGORY_LABELS} - overridable per prefix via category-labels.json).
- * Falls back to the raw code when a kernel/plane mapping is missing, so nothing is ever silently
- * hidden - but a protocol-number prefix with no category mapping at all (e.g. "10", used for
- * QA/phantom protocols) is deliberately left out of the generated book; see
- * {@link #categoryForNumber}.
+ * protocol number's whole-number prefix (seeded with the scanner console's own 1-9 numbering,
+ * plus its pediatric counterpart 11-19 (peds prefix = adult prefix + 10, e.g. "15" for pediatric
+ * Chest since "5" is adult Chest) - see {@link #DEFAULT_CATEGORY_LABELS} - overridable per prefix
+ * via category-labels.json). Falls back to the raw code when a kernel/plane mapping is missing,
+ * so nothing is ever silently hidden - but a protocol-number prefix with no category mapping at
+ * all (e.g. "10"/"20", used for QA/phantom protocols) is deliberately left out of the generated
+ * book; see {@link #categoryForNumber}.
  */
 public class LabelConfig {
     private static final Map<String, String> DEFAULT_PLANE_LABELS = new HashMap<String, String>();
@@ -27,9 +28,10 @@ public class LabelConfig {
         DEFAULT_PLANE_LABELS.put("270", "Lateral");
     }
 
-    // Matches the scanner console's own protocol numbering (1.x-9.x), not a guess from body part
+    // Matches the scanner console's own protocol numbering (1.x-9.x for adult, 11.x-19.x for its
+    // pediatric counterpart - same body part, prefix offset by +10), not a guess from body part
     // text - the machine already groups protocols this way, so the book should match it exactly.
-    // 10.x (QA/phantom protocols) has no entry on purpose: see categoryForNumber().
+    // 10.x/20.x (QA/phantom protocols) have no entry on purpose: see categoryForNumber().
     private static final Map<String, String> DEFAULT_CATEGORY_LABELS = new LinkedHashMap<String, String>();
     static {
         DEFAULT_CATEGORY_LABELS.put("1", "Head");
@@ -41,6 +43,15 @@ public class LabelConfig {
         DEFAULT_CATEGORY_LABELS.put("7", "Spine");
         DEFAULT_CATEGORY_LABELS.put("8", "Pelvis");
         DEFAULT_CATEGORY_LABELS.put("9", "Lower Ext.");
+        DEFAULT_CATEGORY_LABELS.put("11", "Head");
+        DEFAULT_CATEGORY_LABELS.put("12", "Face");
+        DEFAULT_CATEGORY_LABELS.put("13", "Neck");
+        DEFAULT_CATEGORY_LABELS.put("14", "Upper Ext.");
+        DEFAULT_CATEGORY_LABELS.put("15", "Chest");
+        DEFAULT_CATEGORY_LABELS.put("16", "ABD/PEL");
+        DEFAULT_CATEGORY_LABELS.put("17", "Spine");
+        DEFAULT_CATEGORY_LABELS.put("18", "Pelvis");
+        DEFAULT_CATEGORY_LABELS.put("19", "Lower Ext.");
     }
 
     private final Map<String, String> kernelLabels;
@@ -77,10 +88,10 @@ public class LabelConfig {
 
     /**
      * Reading category for a protocol number's whole-number prefix (e.g. 9 from "9.2"), matching
-     * the scanner console's own 1-9 numbering. Returns null when the prefix has no mapping - by
-     * default that's everything except 1-9 (in particular 10, GE's QA/phantom protocols) - which
-     * signals the caller to leave those protocols out of the generated book entirely rather than
-     * dumping them in a catch-all category.
+     * the scanner console's own 1-9 (adult) / 11-19 (pediatric) numbering. Returns null when the
+     * prefix has no mapping - by default that's everything except 1-9/11-19 (in particular 10 and
+     * 20, GE's QA/phantom protocols) - which signals the caller to leave those protocols out of
+     * the generated book entirely rather than dumping them in a catch-all category.
      */
     public String categoryForNumber(int prefix) {
         return categoryLabels.get(String.valueOf(prefix));
