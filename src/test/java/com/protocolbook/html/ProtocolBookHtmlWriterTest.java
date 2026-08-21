@@ -166,7 +166,7 @@ class ProtocolBookHtmlWriterTest {
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"));
-        assertTrue(html.contains(">Pediatric (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
+        assertTrue(html.contains(">Peds (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
         assertTrue(html.contains(">9.2.1 &mdash;"), "the three-segment number itself should still render correctly");
     }
 

@@ -61,7 +61,7 @@ public class ProtocolBookHtmlWriter {
         }
         for (Map<Integer, List<Protocol>> byGroup : tree.values())
             for (List<Protocol> group : byGroup.values())
-                group.sort(this::compareProtocolNumbers);
+                group.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
 
         List<String> buckets = new ArrayList<String>(tree.keySet());
         buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
@@ -156,14 +156,13 @@ public class ProtocolBookHtmlWriter {
         return total;
     }
 
-    // Pediatric if the patient type says so, or - the scanner's own convention - the protocol
-    // number has three dot-separated segments (e.g. "9.2.1") instead of the usual two ("9.2").
+    // Primarily by protocol number shape (peds numbers carry an extra dot-separated segment,
+    // e.g. "9.1.2" vs adult's "9.1" - see ProtocolNumbers), falling back to the free-text patient
+    // type for protocols that don't follow that convention (e.g. hand-authored manual protocols).
     private String patientBucket(Protocol p) {
-        String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
-        if (type != null && type.toLowerCase(Locale.ROOT).contains("pediatric")) return "Pediatric";
-        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number != null && number.split("\\.").length == 3) return "Pediatric";
-        return "Adult";
+        Metadata m = p.getMetadata();
+        if (ProtocolNumbers.isPediatric(m == null ? null : m.getProtocolNumber())) return "Peds";
+        String type = m == null ? null : m.getPatientType();
         if (type == null) return "Adult";
         String t = type.toLowerCase(Locale.ROOT);
         boolean pediatric = t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
@@ -292,32 +291,8 @@ public class ProtocolBookHtmlWriter {
         return o != null && o.isExcluded();
     }
 
-    // Compares protocol numbers segment-by-segment as integers (e.g. "9.2" < "9.10" < "9.2.1"),
-    // so this works the same for the usual two-segment adult numbers and the three-segment
-    // pediatric ones ("9.2.1") without one throwing off the other's ordering.
-    private int compareProtocolNumbers(Protocol a, Protocol b) {
-        int[] sa = numberSegments(a);
-        int[] sb = numberSegments(b);
-        if (sa == null && sb == null) return 0;
-        if (sa == null) return 1;
-        if (sb == null) return -1;
-        int len = Math.min(sa.length, sb.length);
-        for (int i = 0; i < len; i++) {
-            int cmp = Integer.compare(sa[i], sb[i]);
-            if (cmp != 0) return cmp;
-        }
-        return Integer.compare(sa.length, sb.length);
-    }
-
-    private int[] numberSegments(Protocol p) {
-        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null || number.isEmpty()) return null;
-        String[] parts = number.split("\\.");
-        int[] segments = new int[parts.length];
-        for (int i = 0; i < parts.length; i++) {
-            try { segments[i] = Integer.parseInt(parts[i]); } catch (Exception e) { return null; }
-        }
-        return segments;
+    private String protocolNumber(Protocol p) {
+        return p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
     }
 
     // Hand-typed log of what changed and why (see Changelog) - not derived from the scanner
