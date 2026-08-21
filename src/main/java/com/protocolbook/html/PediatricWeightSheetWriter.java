@@ -59,7 +59,9 @@ public class PediatricWeightSheetWriter {
 
     private boolean isPediatric(Protocol p) {
         String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
-        return type != null && type.toLowerCase(Locale.ROOT).contains("pediatric");
+        if (type == null) return false;
+        String t = type.toLowerCase(Locale.ROOT);
+        return t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
     }
 
     private double sortKey(Protocol p) {

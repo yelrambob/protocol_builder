@@ -12,8 +12,10 @@ import java.util.*;
 /**
  * Renders the parsed protocols as a single self-contained HTML app: a click-only sidebar (nothing
  * opens or expands on hover - that was cumbersome to navigate; clicking a top-level entry both
- * opens it and widens the collapsed icon rail) drilling down Adult/Pediatric (from
- * {@link Metadata#getPatientType}) -> a reading category keyed by the protocol number's
+ * opens it and widens the sidebar) with Adult and Peds always shown as their own top-level entries
+ * (spelled out, not abbreviated to an icon letter - even with zero protocols in one of them, so
+ * the menu structure is never a surprise) drilling down from {@link Metadata#getPatientType} into
+ * a reading category keyed by the protocol number's
  * whole-number prefix (e.g. all "9.x" protocols together) and labeled to match the scanner
  * console's own numbering (1 Head, 2 Face, 3 Neck, ... - see {@link LabelConfig#categoryForNumber})
  * -> individual protocols. A prefix with no category mapping (by default anything outside 1-9,
@@ -34,17 +36,20 @@ import java.util.*;
  * protocol's page when its number still matches one in the book.
  */
 public class ProtocolBookHtmlWriter {
-    private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Pediatric");
+    private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Peds");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
                        String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
-        // bucket (Adult/Pediatric) -> protocol-number whole-number prefix -> protocols.
+        // bucket (Adult/Peds) -> protocol-number whole-number prefix -> protocols.
         // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
         // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
         // excluded one at a time in protocol-overrides.json.
         Map<String, Map<Integer, List<Protocol>>> tree = new LinkedHashMap<String, Map<Integer, List<Protocol>>>();
+        // Adult and Peds always get a top-level entry, even with zero protocols in one of them -
+        // the sidebar's shape shouldn't depend on what happens to be in this particular export.
+        for (String bucket : BUCKET_ORDER) tree.put(bucket, new LinkedHashMap<Integer, List<Protocol>>());
         for (Protocol p : protocols) {
             if (isExcluded(p, overrides)) continue;
             int prefix = groupKey(p);
@@ -82,7 +87,6 @@ public class ProtocolBookHtmlWriter {
         for (String bucket : buckets) {
             Map<Integer, List<Protocol>> byGroup = tree.get(bucket);
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
-                    .append("<span class=\"nav-icon\">").append(categoryInitial(bucket)).append("</span>")
                     .append("<span class=\"nav-text\">").append(HtmlSupport.esc(bucket)).append(" (").append(count(byGroup)).append(")</span></a>\n");
             html.append("<ul class=\"submenu\">\n");
             for (Integer prefix : sortedGroups(byGroup)) {
@@ -104,13 +108,11 @@ public class ProtocolBookHtmlWriter {
         }
         if (changelog != null && !changelog.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
-                    .append("<span class=\"nav-icon\"><span>R</span></span>")
                     .append("<span class=\"nav-text\">Recent Changes (").append(changelog.size()).append(")</span></a>\n</li>\n");
         }
         if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
-                    .append("<span class=\"nav-icon\"><span>S</span></span>")
-                    .append("<span class=\"nav-text\">Surgical Planning Protocols (").append(pdfLibrary.size()).append(")</span></a>\n");
+                    .append("<span class=\"nav-text\">Surgical Planning (").append(pdfLibrary.size()).append(")</span></a>\n");
             html.append("<ul class=\"submenu\">\n");
             for (PdfLibrary.Entry entry : pdfLibrary) {
                 html.append("<li><a href=\"").append(HtmlSupport.esc(entry.url)).append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
@@ -156,7 +158,10 @@ public class ProtocolBookHtmlWriter {
 
     private String patientBucket(Protocol p) {
         String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
-        return type != null && type.toLowerCase(Locale.ROOT).contains("pediatric") ? "Pediatric" : "Adult";
+        if (type == null) return "Adult";
+        String t = type.toLowerCase(Locale.ROOT);
+        boolean pediatric = t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
+        return pediatric ? "Peds" : "Adult";
     }
 
     private int bucketRank(String bucket) {
@@ -175,10 +180,6 @@ public class ProtocolBookHtmlWriter {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         String base = number != null && !number.isEmpty() ? number : ("unnamed-" + index);
         return "p-" + base.replaceAll("[^a-zA-Z0-9]+", "-");
-    }
-
-    private String categoryInitial(String category) {
-        return category == null || category.isEmpty() ? "?" : category.substring(0, 1).toUpperCase(Locale.ROOT);
     }
 
     // A "title" override renames how a protocol displays in the book without touching its
@@ -326,39 +327,37 @@ public class ProtocolBookHtmlWriter {
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
 
-            // Sidebar - collapsed to an icon rail; every level, including the rail's own width, only
-            // reacts to clicks (see toggleMenu in JS), never hover.
-            // menu-category (Adult/Pediatric/Recent Changes/PDF library) -> menu-subcat (1-9 reading category, e.g. "Chest").
-            ".main-menu{position:fixed;top:0;left:0;bottom:0;width:56px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
+            // Sidebar - top-level entries (Adult/Peds/Recent Changes/Surgical Planning) are always
+            // spelled out in full, never shrunk to a single icon letter; only the rail's width and
+            // every drill-down level react to clicks (see toggleMenu in JS), never hover.
+            // menu-category (Adult/Peds/Recent Changes/PDF library) -> menu-subcat (1-9 reading category, e.g. "Chest").
+            ".main-menu{position:fixed;top:0;left:0;bottom:0;width:220px;background:var(--ahs-orange);overflow-x:hidden;overflow-y:auto;" +
             "transition:width .15s ease;z-index:1000;box-shadow:2px 0 8px rgba(0,0,0,.3);}" +
             ".main-menu.expanded{width:320px;}" +
             ".menu-logo{padding:14px 0;text-align:center;border-bottom:1px solid rgba(255,255,255,.3);}" +
-            ".menu-logo img{max-width:44px;max-height:44px;}" +
+            ".menu-logo img{max-width:160px;max-height:60px;}" +
             ".main-menu.expanded .menu-logo img{max-width:220px;}" +
             ".main-menu ul{list-style:none;margin:0;padding:6px 0;}" +
             ".menu-category{border-top:1px solid rgba(255,255,255,.25);}" +
             ".menu-category:first-child{border-top:none;}" +
-            ".cat-link{display:flex;align-items:center;padding:12px 0;color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;font-size:15px;cursor:pointer;}" +
+            ".cat-link{display:flex;align-items:center;padding:12px 16px;color:#fff;text-decoration:none;white-space:nowrap;font-weight:600;font-size:15px;cursor:pointer;}" +
             ".cat-link:hover,.menu-category.open>.cat-link{background:var(--ahs-orange-dark);}" +
-            ".nav-icon{display:flex;align-items:center;justify-content:center;width:56px;height:28px;flex-shrink:0;}" +
-            ".nav-icon span{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;" +
-            "background:rgba(255,255,255,.25);font-size:14px;font-weight:700;}" +
             ".nav-text{display:inline-block;}" +
             ".submenu{display:none;background:rgba(0,0,0,.15);}" +
             ".menu-category.open>.submenu{display:block;}" +
 
             ".menu-subcat{border-top:1px solid rgba(255,255,255,.15);}" +
-            ".subcat-link{display:block;padding:10px 14px 10px 56px;color:#fff;text-decoration:none;font-weight:600;font-size:14px;" +
+            ".subcat-link{display:block;padding:10px 14px 10px 28px;color:#fff;text-decoration:none;font-weight:600;font-size:14px;" +
             "cursor:pointer;white-space:normal;background:rgba(0,0,0,.08);}" +
             ".subcat-link:hover,.menu-subcat.open>.subcat-link{background:var(--ahs-orange-dark);}" +
             ".menu-subcat.open>.submenu{display:block;}" +
 
-            ".submenu a{display:block;padding:8px 14px 8px 56px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
+            ".submenu a{display:block;padding:8px 14px 8px 28px;color:#fff;text-decoration:none;font-size:13px;line-height:1.35;" +
             "white-space:normal;border-top:1px solid rgba(255,255,255,.12);}" +
             ".submenu a:hover,.submenu a.active{background:var(--ahs-blue);}" +
 
             // Main content - blue canvas, protocol shown as a white reading card so dense tables stay legible.
-            ".main-content{margin-left:56px;min-height:100vh;padding:2.5rem;}" +
+            ".main-content{margin-left:220px;min-height:100vh;padding:2.5rem;}" +
             ".protocol-view.welcome{color:#fff;text-align:center;padding-top:14vh;}" +
             ".protocol-view.welcome h1{font-size:2.2rem;margin-bottom:.5rem;}" +
             ".welcome-logo{max-width:280px;max-height:120px;margin-bottom:1.5rem;}" +
