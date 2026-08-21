@@ -27,7 +27,10 @@ import java.util.*;
  * destination show inline.
  * An optional {@link PdfLibrary} of externally hosted PDFs (not tied to any CT protocol) gets
  * its own top-level sidebar entry, linking out with target="_blank" since those files live
- * on a different server than wherever this book itself ends up hosted.
+ * on a different server than wherever this book itself ends up hosted. A second, separate
+ * {@link PdfLibrary} list ("reference documents" - e.g. contrast administration guides) gets its
+ * own top-level entry the same way, kept apart from the surgical-planning one since they're
+ * conceptually different lists even though both use the exact same file format/loader.
  * An optional {@link ProtocolImages} shows a per-protocol reference image, looked up by
  * convention (protocol number -> filename) rather than a maintained list; the <img> hides
  * itself client-side if that particular protocol doesn't have one on the server.
@@ -39,8 +42,8 @@ public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Peds");
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
-                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, ProtocolImages protocolImages,
-                       String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
+                       String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, List<PdfLibrary.Entry> referenceLibrary,
+                       ProtocolImages protocolImages, String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
         // bucket (Adult/Peds) -> protocol-number whole-number prefix -> protocols.
         // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
@@ -110,16 +113,8 @@ public class ProtocolBookHtmlWriter {
             html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"showProtocol('recent-changes'); return false;\">")
                     .append("<span class=\"nav-text\">Recent Changes (").append(changelog.size()).append(")</span></a>\n</li>\n");
         }
-        if (pdfLibrary != null && !pdfLibrary.isEmpty()) {
-            html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
-                    .append("<span class=\"nav-text\">Surgical Planning (").append(pdfLibrary.size()).append(")</span></a>\n");
-            html.append("<ul class=\"submenu\">\n");
-            for (PdfLibrary.Entry entry : pdfLibrary) {
-                html.append("<li><a href=\"").append(HtmlSupport.esc(entry.url)).append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
-                        .append(HtmlSupport.esc(entry.title)).append("</a></li>\n");
-            }
-            html.append("</ul>\n</li>\n");
-        }
+        appendPdfCategory(html, pdfLibrary, "Surgical Planning");
+        appendPdfCategory(html, referenceLibrary, "Reference Documents");
         html.append("</ul>\n</nav>\n");
 
         html.append("<main class=\"main-content\">\n");
@@ -187,6 +182,20 @@ public class ProtocolBookHtmlWriter {
         return "p-" + base.replaceAll("[^a-zA-Z0-9]+", "-");
     }
 
+    // Shared rendering for both externally-hosted-link sidebar categories (Surgical Planning /
+    // Reference Documents) - same file format (see PdfLibrary), different lists.
+    private void appendPdfCategory(StringBuilder html, List<PdfLibrary.Entry> entries, String label) {
+        if (entries == null || entries.isEmpty()) return;
+        html.append("<li class=\"menu-category\">\n<a href=\"#\" class=\"cat-link\" onclick=\"return toggleMenu(this);\">")
+                .append("<span class=\"nav-text\">").append(HtmlSupport.esc(label)).append(" (").append(entries.size()).append(")</span></a>\n");
+        html.append("<ul class=\"submenu\">\n");
+        for (PdfLibrary.Entry entry : entries) {
+            html.append("<li><a href=\"").append(HtmlSupport.esc(entry.url)).append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .append(HtmlSupport.esc(entry.title)).append("</a></li>\n");
+        }
+        html.append("</ul>\n</li>\n");
+    }
+
     // A "title" override renames how a protocol displays in the book without touching its
     // underlying scanner name (which still flows through --json/console output unchanged).
     private String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
@@ -228,22 +237,28 @@ public class ProtocolBookHtmlWriter {
                     .append(HtmlSupport.esc(p.getDose().getDlp())).append(" mGy&middot;cm</p>\n");
         }
 
-        for (Series s : p.getSeries()) appendSeries(html, s, labels);
+        for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
 
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(HtmlSupport.esc(String.join("; ", p.getNotes()))).append("</p>\n");
         }
     }
 
-    private void appendSeries(StringBuilder html, Series s, LabelConfig labels) {
+    private void appendSeries(StringBuilder html, Series s, LabelConfig labels, ProtocolOverride override) {
         boolean scout = isScout(s);
         html.append("<div class=\"series\"><h3>Series ").append(s.getNumber()).append(" &mdash; ")
                 .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
+        // contrastVolume/contrastRate overrides let a person correct what's shown here without
+        // needing to touch the underlying scanner export.
         if (!scout && s.getContrast() != null && s.getContrast().isIv()) {
-            html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(s.getContrast().getIvVolume())).append(" mL");
-            if (s.getContrast().getFlowRate() != null) html.append(" @ ").append(HtmlSupport.esc(s.getContrast().getFlowRate())).append(" mL/s");
+            String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
+                    ? override.getContrastVolume() : s.getContrast().getIvVolume();
+            String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
+                    ? override.getContrastRate() : s.getContrast().getFlowRate();
+            html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(volume)).append(" mL");
+            if (rate != null) html.append(" @ ").append(HtmlSupport.esc(rate)).append(" mL/s");
             html.append("</p>\n");
         }
         if (scout) appendScoutTable(html, s, labels);
@@ -275,7 +290,9 @@ public class ProtocolBookHtmlWriter {
         boolean autoMa = a.getMaMode() != null && !"0".equals(a.getMaMode()) && a.getMinMa() != null && a.getMaxMa() != null;
         html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
                 .append(autoMa ? HtmlSupport.esc(a.getMinMa()) + "-" + HtmlSupport.esc(a.getMaxMa()) : HtmlSupport.esc(a.getMa())).append(" mA");
-        if (a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
+        // Noise Index only means anything under SmartmA/auto-mA - a fixed mA group's noiseIndex
+        // field can be a stale leftover value, so don't show it when mA isn't actually automatic.
+        if (autoMa && a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
         if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
         if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(g.getDose().getCtdi())).append(" mGy");
