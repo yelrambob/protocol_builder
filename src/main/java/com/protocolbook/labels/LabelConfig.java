@@ -5,12 +5,16 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Turns raw numeric codes from the scanner export into readable labels for the protocol book:
  * recon kernel numbers (site-specific, must come from kernel-labels.json - there's no way to
  * derive "STD"/"DTL"/"BN+" from the export alone), scout plane angles (seeded with the standard
- * GE convention, overridable per site via plane-labels.json), and the reading category for a
+ * GE convention, overridable per site via plane-labels.json), ASIR/ASIR-V iterative reconstruction
+ * level (GE's own "AR" + percentage convention, e.g. "AR40" -&gt; "40%" - see {@link #asir}), and
+ * the reading category for a
  * protocol number's whole-number prefix (seeded with the scanner console's own 1-9 numbering,
  * plus its pediatric counterpart 11-19 (peds prefix = adult prefix + 10, e.g. "15" for pediatric
  * Chest since "5" is adult Chest) - see {@link #DEFAULT_CATEGORY_LABELS} - overridable per prefix
@@ -20,6 +24,10 @@ import java.util.Map;
  * book; see {@link #categoryForNumber}.
  */
 public class LabelConfig {
+    // GE's own recon-level ASIR/ASIR-V convention: "AR" followed by the blend percentage, e.g.
+    // "AR40" is 40% ASIR - unlike kernel codes, this doesn't need a site-maintained labels file.
+    private static final Pattern ASIR_CODE = Pattern.compile("(?i)^AR(\\d+)$");
+
     private static final Map<String, String> DEFAULT_PLANE_LABELS = new HashMap<String, String>();
     static {
         DEFAULT_PLANE_LABELS.put("0", "AP");
@@ -84,6 +92,18 @@ public class LabelConfig {
         if (code == null) return null;
         String label = planeLabels.get(code);
         return label != null && !label.isEmpty() ? label : code + "°";
+    }
+
+    /**
+     * ASIR/ASIR-V iterative reconstruction level for a recon's raw iterativeConfig code, e.g.
+     * "AR40" -&gt; "40%" - most protocols land on 40%, but this reads whatever the scanner actually
+     * set rather than assuming it. Falls back to the raw code unchanged when it doesn't match
+     * GE's "AR"+percentage convention, so nothing is ever silently hidden.
+     */
+    public String asir(String code) {
+        if (code == null) return null;
+        Matcher m = ASIR_CODE.matcher(code.trim());
+        return m.matches() ? m.group(1) + "%" : code;
     }
 
     /**

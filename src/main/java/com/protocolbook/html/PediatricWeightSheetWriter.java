@@ -9,28 +9,16 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Printable quick-reference of pediatric protocols, sorted by protocol number, with any
  * weight-in-kg found in the protocol name annotated with its pound equivalent - pediatric
  * protocol names are conventionally weight-banded (e.g. "CT CHEST &lt;5KG", "CT ABD 10-20KG").
- *
- * Best-effort regex, not an exhaustive parser of every phrasing GE sites use: handles a bare
- * "NNKG", a comparison-prefixed "&lt;NNKG"/"&gt;=NNKG", and a range "NN-NNKG"/"NN to NNKG".
- * If a real protocol name doesn't get picked up, the pattern needs extending, not the whole
- * design rethought.
+ * Weight parsing itself lives in {@link WeightAnnotations}, shared with {@link ProtocolBookHtmlWriter}.
  *
  * Shares its base look with {@link ProtocolBookHtmlWriter} via {@link HtmlSupport}.
  */
 public class PediatricWeightSheetWriter {
-    private static final double KG_TO_LB = 2.20462;
-    private static final Pattern WEIGHT_PATTERN = Pattern.compile(
-            "(?<lo>\\d+(?:\\.\\d+)?)\\s*(?:-|to)\\s*(?<hi>\\d+(?:\\.\\d+)?)\\s*KGS?\\b"
-            + "|(?<cmp><=|>=|<|>)?\\s*(?<single>\\d+(?:\\.\\d+)?)\\s*KGS?\\b",
-            Pattern.CASE_INSENSITIVE);
-
     public File write(List<Protocol> protocols, File outFile) throws IOException {
         List<Protocol> peds = new ArrayList<Protocol>();
         for (Protocol p : protocols) if (isPediatric(p)) peds.add(p);
@@ -46,7 +34,7 @@ public class PediatricWeightSheetWriter {
         for (Protocol p : peds) {
             Metadata m = p.getMetadata();
             html.append("<tr><td>").append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append("</td><td>")
-                    .append(annotateWeights(m == null ? null : m.getName())).append("</td><td>")
+                    .append(WeightAnnotations.annotateWeights(m == null ? null : m.getName())).append("</td><td>")
                     .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</td></tr>\n");
         }
         html.append("</table>\n</body>\n</html>\n");
@@ -70,28 +58,6 @@ public class PediatricWeightSheetWriter {
 
     private String protocolNumber(Protocol p) {
         return p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-    }
-
-    private String annotateWeights(String name) {
-        if (name == null) return "";
-        Matcher matcher = WEIGHT_PATTERN.matcher(name);
-        StringBuilder out = new StringBuilder();
-        int last = 0;
-        while (matcher.find()) {
-            out.append(HtmlSupport.esc(name.substring(last, matcher.start()))).append(HtmlSupport.esc(matcher.group()));
-            if (matcher.group("lo") != null) {
-                out.append(" (").append(kgToLb(matcher.group("lo"))).append('-').append(kgToLb(matcher.group("hi"))).append(" lb)");
-            } else {
-                out.append(" (").append(kgToLb(matcher.group("single"))).append(" lb)");
-            }
-            last = matcher.end();
-        }
-        out.append(HtmlSupport.esc(name.substring(last)));
-        return out.toString();
-    }
-
-    private long kgToLb(String kg) {
-        return Math.round(Double.parseDouble(kg) * KG_TO_LB);
     }
 
     private static final String CSS = HtmlSupport.BASE_CSS;
