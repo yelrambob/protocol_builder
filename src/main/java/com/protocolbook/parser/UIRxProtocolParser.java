@@ -157,8 +157,14 @@ public class UIRxProtocolParser {
         if (name != null && !name.isEmpty()) p.getMetadata().setName(name);
         String anatomy = protoVals.remove("anatomy");
         if (anatomy != null && !anatomy.isEmpty()) p.getMetadata().setBodyPart(anatomy);
+        // protocolmetadata.json's "humanoid" field is the authoritative Adult/Pediatric flag GE
+        // exports per protocol - proto's own "category" ulement is a much fuzzier fallback (its
+        // real-world values aren't reliably "adult"/"pediatric"), so it must never clobber a
+        // humanoid-derived patient type that's already set, only fill in for one that's missing.
         String category = protoVals.remove("category");
-        if (category != null && !category.isEmpty()) p.getMetadata().setPatientType(category);
+        String existingPatientType = p.getMetadata().getPatientType();
+        if (category != null && !category.isEmpty() && (existingPatientType == null || existingPatientType.isEmpty()))
+            p.getMetadata().setPatientType(category);
         String notes = protoVals.remove("protocolNotes");
         if (notes != null && !notes.isEmpty()) p.getNotes().add(notes);
         remainder(p, "proto", protoVals);
