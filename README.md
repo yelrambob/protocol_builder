@@ -96,7 +96,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--plane-labels <file>` | Path to the scout-plane-angle → label lookup. Defaults to `./plane-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--category-labels <file>` | Path to the protocol-number-prefix (1-9) → reading-category override lookup. Defaults to `./category-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--logo <file>` | Image (PNG/JPG/GIF/SVG) embedded as a base64 data URI at the top of the sidebar, the welcome view, and every protocol page. Defaults to `./logo.png`; used only if present. Only takes effect together with `--html`. |
-| `--pdf-library <file>` | Path to the hand-maintained list of externally hosted PDFs (title+url pairs) shown as their own "Surgical Planning Protocols" sidebar category. Defaults to `./pdf-library.json`; used only if present. Only takes effect together with `--html`. |
+| `--pdf-library <file>` | Path to the hand-maintained list of externally hosted PDFs (title+url pairs) shown as their own "Surgical Planning" sidebar category. Defaults to `./pdf-library.json`; used only if present. Only takes effect together with `--html`. |
 | `--manual-protocols <file>` | Path to hand-authored protocols that don't exist as a folder on the scanner. Defaults to `./manual-protocols.json`; used only if present. Merged in before every output (`--json`/`--html`/`--peds-weights`), not just `--html`. |
 | `--protocol-images-base <url>` | Base URL where per-protocol reference images are hosted, named `<protocolNumber>.<ext>` (e.g. `9.2.png`) — no list to maintain, each protocol page just attempts to load its own image and hides it client-side if that one 404s. Only takes effect together with `--html`. |
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
@@ -163,7 +163,7 @@ All three are only used when `--html` is passed.
     { "title": "Knee Replacement Planning Guide", "url": "https://your-server.example.com/pdfs/knee-planning.pdf" }
   ]
   ```
-  Rendered as its own "Surgical Planning Protocols" sidebar category, opening each PDF in a new tab.
+  Rendered as its own "Surgical Planning" sidebar category, opening each PDF in a new tab.
 - **`manual-protocols.json`** adds protocols that don't exist as a folder on the scanner (e.g. something still being planned). Merged in before every output, so a manual entry shows up in `--json`/`--html`/`--peds-weights` exactly like a scanner-discovered one:
   ```json
   [
@@ -213,13 +213,13 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
 `--html <file>` renders every parsed protocol into a single self-contained, browsable HTML app (no external CSS/JS/font/CDN dependencies — it works fully offline) at `<file>`, styled in Atlantic Health System's colors (orange sidebar, blue main content — a best-effort approximation, not sourced from an official brand guide):
 
-- A **sidebar**, collapsed to a 56px icon rail by default. Nothing in it reacts to hover — clicking a top-level entry both opens it and widens the rail so labels are readable. It drills down two levels, each starting collapsed until you click it open:
-  1. **Adult** / **Pediatric** — a protocol counts as Pediatric if its patient type says so, or if its protocol number has three dot-separated segments (e.g. `9.2.1`) instead of the usual two (`9.2`) - the scanner's own convention for pediatric variants. Either signal is enough on its own.
+- A **sidebar**, always showing its top-level entries spelled out in full (never shrunk to a single icon letter). Nothing in it reacts to hover — clicking a top-level entry both opens it and widens the rail so submenu labels are readable. It drills down two levels, each starting collapsed until you click it open:
+  1. **Adult** / **Peds** — split from each protocol's patient type. Both always appear, even if one of them has zero protocols in this export.
   2. A **reading category** keyed by the protocol number's whole-number prefix (e.g. all "9.x" protocols together) and labeled to match the scanner console's own numbering, not a guess — `1` Head, `2` Face, `3` Neck, `4` Upper Ext., `5` Chest, `6` ABD/PEL, `7` Spine, `8` Pelvis, `9` Lower Ext. by default (overridable via `category-labels.json`). **A prefix with no category mapping (by default anything outside 1-9, in particular `10.x` QA/phantom protocols) is left out of the book entirely** — no manual exclusion needed.
 
-  An optional **Recent Changes** entry (top-level, alongside Adult/Pediatric) links directly to a table built from `changelog.json` — a hand-typed log of what changed and why, most-recent-first, each row linking to that protocol's page when its number still matches one in the book. Not derived from the scanner export; nothing here is automatic. Omitted entirely when the file is missing or empty.
+  An optional **Recent Changes** entry (top-level, alongside Adult/Peds) links directly to a table built from `changelog.json` — a hand-typed log of what changed and why, most-recent-first, each row linking to that protocol's page when its number still matches one in the book. Not derived from the scanner export; nothing here is automatic. Omitted entirely when the file is missing or empty.
 
-  An optional **Surgical Planning Protocols** entry also sits alongside Adult/Pediatric, listing any externally hosted PDFs from `pdf-library.json`.
+  An optional **Surgical Planning** entry also sits alongside Adult/Peds, listing any externally hosted PDFs from `pdf-library.json`.
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
 - Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show any IV contrast volume/injection rate under the series name, then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, and rotation time per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
 - Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.

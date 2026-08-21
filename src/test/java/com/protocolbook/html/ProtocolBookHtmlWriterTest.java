@@ -45,10 +45,11 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains("Pad under the knee for comfort."), "manual scanning note must be rendered");
         assertTrue(html.contains("AXIAL KNEE DET 2.5MM"), "recon display name should still show up");
 
-        // all fixture protocols are adult, so there should be exactly one top-level bucket
+        // Adult and Peds are always both rendered as top-level buckets, even though this fixture is all-adult
         long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(1, bucketCount, "should be one Adult bucket, no Pediatric bucket without any pediatric protocols");
+        assertEquals(2, bucketCount, "Adult and Peds buckets should always render, even with zero pediatric protocols");
         assertTrue(html.contains(">Adult ("));
+        assertTrue(html.contains(">Peds (0)<"), "Peds bucket should still render with a zero count when there are no pediatric protocols");
 
         // fixture prefixes 3/4/7/8/9 -> 5 number-categories, labeled to match the scanner's own numbering
         long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-subcat\"")).count();
@@ -151,7 +152,7 @@ class ProtocolBookHtmlWriterTest {
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"), "the other 11 protocols should stay under Adult");
-        assertTrue(html.contains(">Pediatric (1)<"), "the one re-flagged protocol should form its own Pediatric bucket");
+        assertTrue(html.contains(">Peds (1)<"), "the one re-flagged protocol should form its own Peds bucket");
     }
 
     @Test void threeSegmentProtocolNumberIsPediatricEvenWithoutAPatientTypeFlag(@TempDir Path tempDir) throws Exception {
@@ -241,12 +242,12 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
+        assertTrue(html.contains(">Surgical Planning (2)<"), "PDF library should show as its own category with a count");
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/knee-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Knee Replacement Planning Guide</a>"));
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/hip-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Hip Replacement Planning Guide</a>"));
-        // 2 top-level buckets: Adult (all fixture protocols) + this new PDF library entry
+        // 3 top-level buckets: Adult + Peds (always rendered) + this new PDF library entry
         long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(2, bucketCount);
+        assertEquals(3, bucketCount);
     }
 
     @Test void omitsPdfLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
@@ -255,7 +256,7 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertFalse(html.contains("Surgical Planning Protocols"));
+        assertFalse(html.contains("Surgical Planning"));
     }
 
     @Test void rendersProtocolImageByConventionWithClientSideFallback(@TempDir Path tempDir) throws Exception {
