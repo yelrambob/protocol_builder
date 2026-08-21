@@ -45,10 +45,11 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains("Pad under the knee for comfort."), "manual scanning note must be rendered");
         assertTrue(html.contains("AXIAL KNEE DET 2.5MM"), "recon display name should still show up");
 
-        // all fixture protocols are adult, so there should be exactly one top-level bucket
+        // Adult and Peds are always both rendered as top-level buckets, even though this fixture is all-adult
         long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(1, bucketCount, "should be one Adult bucket, no Pediatric bucket without any pediatric protocols");
+        assertEquals(2, bucketCount, "Adult and Peds buckets should always render, even with zero pediatric protocols");
         assertTrue(html.contains(">Adult ("));
+        assertTrue(html.contains(">Peds (0)<"), "Peds bucket should still render with a zero count when there are no pediatric protocols");
 
         // fixture prefixes 3/4/7/8/9 -> 5 number-categories, labeled to match the scanner's own numbering
         long categoryCount = html.lines().filter(l -> l.contains("class=\"menu-subcat\"")).count();
@@ -120,6 +121,10 @@ class ProtocolBookHtmlWriterTest {
         int coronalRow = html.indexOf("CORONAL KNEE DET 2.5MM");
         assertTrue(coronalRow > 0);
         assertTrue(html.substring(coronalRow, coronalRow + 200).contains(">STD<"), "reformat row should show the inherited/mapped kernel");
+
+        assertTrue(html.contains("<th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th>"),
+                "the recon table should have an ASIR column alongside Kernel");
+        assertTrue(html.contains(">50%<"), "iterativeConfig code AR50 should map to 50% ASIR");
     }
 
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
@@ -128,9 +133,23 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
+        // The knee protocol's axial group has SmartmA active (milliAmpsMode="2"): milliAmps=15 is a
         // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
         assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
+    }
+
+    @Test void fixedDoseGroupShowsFixedMaEvenWithMinMaxPopulated(@TempDir Path tempDir) throws Exception {
+        // milliAmpsMode="0" (present, not absent) means SmartmA is OFF - a real head protocol still
+        // has milliAmpsMin/milliAmpsMax populated on a fixed-dose group, so checking for non-null
+        // alone (rather than what the mode value actually says) misread this as auto-mA being active.
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(new File("src/test/resources/head-fixed-dose-protocol"));
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("120 kV &middot; 310 mA"), "milliAmpsMode=\"0\" should render the fixed mA value, not the 160-360 min-max range");
+        assertFalse(html.contains("160-360 mA"), "a fixed-dose group must never show a min-max mA range");
     }
 
     @Test void noiseIndexIsHiddenWhenMaIsFixedNotAuto(@TempDir Path tempDir) throws Exception {
@@ -196,7 +215,7 @@ class ProtocolBookHtmlWriterTest {
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"), "the other 11 protocols should stay under Adult");
-        assertTrue(html.contains(">Pediatric (1)<"), "the one re-flagged protocol should form its own Pediatric bucket");
+        assertTrue(html.contains(">Peds (1)<"), "the one re-flagged protocol should form its own Peds bucket");
     }
 
     @Test void threeSegmentProtocolNumberIsPediatricEvenWithoutAPatientTypeFlag(@TempDir Path tempDir) throws Exception {
@@ -210,7 +229,7 @@ class ProtocolBookHtmlWriterTest {
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"));
-        assertTrue(html.contains(">Pediatric (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
+        assertTrue(html.contains(">Peds (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
         assertTrue(html.contains(">9.2.1 &mdash;"), "the three-segment number itself should still render correctly");
     }
 
@@ -286,12 +305,12 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains(">Surgical Planning Protocols (2)<"), "PDF library should show as its own category with a count");
+        assertTrue(html.contains(">Surgical Planning (2)<"), "PDF library should show as its own category with a count");
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/knee-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Knee Replacement Planning Guide</a>"));
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/hip-planning.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Hip Replacement Planning Guide</a>"));
-        // 2 top-level buckets: Adult (all fixture protocols) + this new PDF library entry
+        // 3 top-level buckets: Adult + Peds (always rendered) + this new PDF library entry
         long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(2, bucketCount);
+        assertEquals(3, bucketCount);
     }
 
     @Test void omitsPdfLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
@@ -300,7 +319,7 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertFalse(html.contains("Surgical Planning Protocols"));
+        assertFalse(html.contains("Surgical Planning"));
     }
 
     @Test void rendersReferenceLibraryAsASeparateCategoryFromPdfLibrary(@TempDir Path tempDir) throws Exception {
@@ -314,13 +333,13 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, referenceLibrary, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains(">Surgical Planning Protocols (1)<"));
-        assertTrue(html.contains(">Reference Documents (2)<"), "reference library should render as its own category, separate from Surgical Planning Protocols");
+        assertTrue(html.contains(">Surgical Planning (1)<"));
+        assertTrue(html.contains(">Reference Documents (2)<"), "reference library should render as its own category, separate from Surgical Planning");
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/peds-oral-contrast.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Pediatric Oral Contrast Administration</a>"));
         assertTrue(html.contains("<a href=\"https://example.com/pdfs/adult-oral-contrast.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Adult Oral Contrast Administration</a>"));
-        // 3 top-level buckets: Adult (fixture protocols) + Surgical Planning Protocols + Reference Documents
+        // 4 top-level buckets: Adult + Peds (both always shown) + Surgical Planning + Reference Documents
         long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
-        assertEquals(3, bucketCount);
+        assertEquals(4, bucketCount);
     }
 
     @Test void omitsReferenceLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {

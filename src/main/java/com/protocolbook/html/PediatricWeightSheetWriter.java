@@ -7,7 +7,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -35,7 +34,7 @@ public class PediatricWeightSheetWriter {
     public File write(List<Protocol> protocols, File outFile) throws IOException {
         List<Protocol> peds = new ArrayList<Protocol>();
         for (Protocol p : protocols) if (isPediatric(p)) peds.add(p);
-        peds.sort(Comparator.comparingDouble(this::sortKey));
+        peds.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Pediatric Protocols - Weight Reference</title>\n");
@@ -57,20 +56,20 @@ public class PediatricWeightSheetWriter {
         return outFile;
     }
 
+    // Primarily by protocol number shape (peds numbers carry an extra dot-separated segment,
+    // e.g. "9.1.2" vs adult's "9.1" - see ProtocolNumbers), falling back to the free-text patient
+    // type for protocols that don't follow that convention (e.g. hand-authored manual protocols).
     private boolean isPediatric(Protocol p) {
-        String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
-        return type != null && type.toLowerCase(Locale.ROOT).contains("pediatric");
+        Metadata m = p.getMetadata();
+        if (ProtocolNumbers.isPediatric(m == null ? null : m.getProtocolNumber())) return true;
+        String type = m == null ? null : m.getPatientType();
+        if (type == null) return false;
+        String t = type.toLowerCase(Locale.ROOT);
+        return t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
     }
 
-    private double sortKey(Protocol p) {
-        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null) return Double.MAX_VALUE;
-        String[] parts = number.split("\\.", 2);
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
-            return major + minor / 10000.0;
-        } catch (Exception e) { return Double.MAX_VALUE; }
+    private String protocolNumber(Protocol p) {
+        return p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
     }
 
     private String annotateWeights(String name) {

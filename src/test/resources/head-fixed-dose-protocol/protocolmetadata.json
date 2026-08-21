@@ -1,0 +1,10 @@
+{
+  "protocolVersion" : "1.0",
+  "slotNumber" : "1.1",
+  "name" : "ROUTINE HEAD",
+  "humanoid" : "adult",
+  "anatomyRegion" : "head",
+  "library" : "Site",
+  "uuid" : "a89acf06-0000-0000-0000-000000000000",
+  "lastUpdatedDateTime" : "2026-03-17T07:28:57.000-0400"
+}
