@@ -61,7 +61,7 @@ public class ProtocolBookHtmlWriter {
         }
         for (Map<Integer, List<Protocol>> byGroup : tree.values())
             for (List<Protocol> group : byGroup.values())
-                group.sort(Comparator.comparingDouble(this::sortKey));
+                group.sort(this::compareProtocolNumbers);
 
         List<String> buckets = new ArrayList<String>(tree.keySet());
         buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
@@ -156,8 +156,14 @@ public class ProtocolBookHtmlWriter {
         return total;
     }
 
+    // Pediatric if the patient type says so, or - the scanner's own convention - the protocol
+    // number has three dot-separated segments (e.g. "9.2.1") instead of the usual two ("9.2").
     private String patientBucket(Protocol p) {
         String type = p.getMetadata() == null ? null : p.getMetadata().getPatientType();
+        if (type != null && type.toLowerCase(Locale.ROOT).contains("pediatric")) return "Pediatric";
+        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+        if (number != null && number.split("\\.").length == 3) return "Pediatric";
+        return "Adult";
         if (type == null) return "Adult";
         String t = type.toLowerCase(Locale.ROOT);
         boolean pediatric = t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
@@ -286,15 +292,32 @@ public class ProtocolBookHtmlWriter {
         return o != null && o.isExcluded();
     }
 
-    private double sortKey(Protocol p) {
+    // Compares protocol numbers segment-by-segment as integers (e.g. "9.2" < "9.10" < "9.2.1"),
+    // so this works the same for the usual two-segment adult numbers and the three-segment
+    // pediatric ones ("9.2.1") without one throwing off the other's ordering.
+    private int compareProtocolNumbers(Protocol a, Protocol b) {
+        int[] sa = numberSegments(a);
+        int[] sb = numberSegments(b);
+        if (sa == null && sb == null) return 0;
+        if (sa == null) return 1;
+        if (sb == null) return -1;
+        int len = Math.min(sa.length, sb.length);
+        for (int i = 0; i < len; i++) {
+            int cmp = Integer.compare(sa[i], sb[i]);
+            if (cmp != 0) return cmp;
+        }
+        return Integer.compare(sa.length, sb.length);
+    }
+
+    private int[] numberSegments(Protocol p) {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
-        if (number == null) return Double.MAX_VALUE;
-        String[] parts = number.split("\\.", 2);
-        try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
-            return major + minor / 10000.0; // keeps "9.10" after "9.2" (minor compared as an integer, not a decimal)
-        } catch (Exception e) { return Double.MAX_VALUE; }
+        if (number == null || number.isEmpty()) return null;
+        String[] parts = number.split("\\.");
+        int[] segments = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            try { segments[i] = Integer.parseInt(parts[i]); } catch (Exception e) { return null; }
+        }
+        return segments;
     }
 
     // Hand-typed log of what changed and why (see Changelog) - not derived from the scanner

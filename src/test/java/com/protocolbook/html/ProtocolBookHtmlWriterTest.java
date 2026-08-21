@@ -155,6 +155,21 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(html.contains(">Peds (1)<"), "the one re-flagged protocol should form its own Peds bucket");
     }
 
+    @Test void threeSegmentProtocolNumberIsPediatricEvenWithoutAPatientTypeFlag(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        // scanner convention: peds protocols are always "x.x.x" (three segments), regardless of what patientType says
+        protocols.get(0).getMetadata().setProtocolNumber("9.2.1");
+        protocols.get(0).getMetadata().setPatientType("adult"); // deliberately contradicts the number-based signal
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains(">Adult (11)<"));
+        assertTrue(html.contains(">Pediatric (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
+        assertTrue(html.contains(">9.2.1 &mdash;"), "the three-segment number itself should still render correctly");
+    }
+
     @Test void titleOverrideRenamesProtocolWithoutChangingItsNumber(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         Map<String, ProtocolOverride> overrides = new HashMap<>();
