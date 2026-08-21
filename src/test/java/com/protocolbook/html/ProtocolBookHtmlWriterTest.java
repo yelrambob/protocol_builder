@@ -133,9 +133,23 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        // The knee protocol's axial group has SmartmA active (milliAmpsMode set): milliAmps=15 is a
+        // The knee protocol's axial group has SmartmA active (milliAmpsMode="2"): milliAmps=15 is a
         // stale fallback the console keeps around, minMa=100/maxMa=635 is what's actually configured.
         assertTrue(html.contains("140 kV &middot; 100-635 mA (NI 5.0)"), "SmartmA groups should show the min-max range plus noise index, not the stale fixed mA value");
+    }
+
+    @Test void fixedDoseGroupShowsFixedMaEvenWithMinMaxPopulated(@TempDir Path tempDir) throws Exception {
+        // milliAmpsMode="0" (present, not absent) means SmartmA is OFF - a real head protocol still
+        // has milliAmpsMin/milliAmpsMax populated on a fixed-dose group, so checking for non-null
+        // alone (rather than what the mode value actually says) misread this as auto-mA being active.
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(new File("src/test/resources/head-fixed-dose-protocol"));
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("120 kV &middot; 310 mA"), "milliAmpsMode=\"0\" should render the fixed mA value, not the 160-360 min-max range");
+        assertFalse(html.contains("160-360 mA"), "a fixed-dose group must never show a min-max mA range");
     }
 
     @Test void doesNotRenderADetectorLine(@TempDir Path tempDir) throws Exception {

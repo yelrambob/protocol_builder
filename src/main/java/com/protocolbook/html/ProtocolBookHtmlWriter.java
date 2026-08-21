@@ -269,7 +269,10 @@ public class ProtocolBookHtmlWriter {
 
     private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
         Acquisition a = g.getAcquisition();
-        boolean autoMa = a.getMaMode() != null && a.getMinMa() != null && a.getMaxMa() != null;
+        // milliAmpsMode is a mode code, not a flag - "0" means SmartmA/auto-mA is off (a fixed-dose
+        // group can still carry populated min/max fields the console records regardless), and any
+        // other value means some auto-mA mode is active. Merely checking non-null misread "0" as on.
+        boolean autoMa = a.getMaMode() != null && !"0".equals(a.getMaMode()) && a.getMinMa() != null && a.getMaxMa() != null;
         html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
                 .append(autoMa ? HtmlSupport.esc(a.getMinMa()) + "-" + HtmlSupport.esc(a.getMaxMa()) : HtmlSupport.esc(a.getMa())).append(" mA");
         if (a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
