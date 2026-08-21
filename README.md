@@ -76,7 +76,7 @@ gradlew.bat run --args="protocols.xlsm --html book.html"
 ```
 Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides <file>]
              [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
-             [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
+             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
              [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
              [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
 ```
@@ -91,12 +91,13 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--book-title <text>` | Sets the browser tab title and the welcome-page heading in the HTML book. Defaults to "Protocol Book". Only takes effect together with `--html`. |
 | `--changelog <file>` | Path to a hand-typed "what changed and why" log, rendered as the book's "Recent Changes" sidebar entry/table (see below). Defaults to `./changelog.json`; used only if present. Only takes effect together with `--html`. |
 | `--peds-weights <file>` | Write a printable sheet of protocols whose patient type is pediatric, with any weight-in-kg found in the protocol name annotated with its pound equivalent. |
-| `--overrides <file>` | Path to the hand-maintained overrides JSON (notes, exclusions, send destinations). Defaults to `./protocol-overrides.json`; used only if the file exists. Only takes effect together with `--html`. |
+| `--overrides <file>` | Path to the hand-maintained overrides JSON (title, notes, exclusions, send destinations, contrast volume/rate). Defaults to `./protocol-overrides.json`; used only if the file exists. Only takes effect together with `--html`. |
 | `--kernel-labels <file>` | Path to the recon-kernel-code → label lookup. Defaults to `./kernel-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--plane-labels <file>` | Path to the scout-plane-angle → label lookup. Defaults to `./plane-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--category-labels <file>` | Path to the protocol-number-prefix (1-9) → reading-category override lookup. Defaults to `./category-labels.json`; used only if present. Only takes effect together with `--html`. |
 | `--logo <file>` | Image (PNG/JPG/GIF/SVG) embedded as a base64 data URI at the top of the sidebar, the welcome view, and every protocol page. Defaults to `./logo.png`; used only if present. Only takes effect together with `--html`. |
 | `--pdf-library <file>` | Path to the hand-maintained list of externally hosted PDFs (title+url pairs) shown as their own "Surgical Planning Protocols" sidebar category. Defaults to `./pdf-library.json`; used only if present. Only takes effect together with `--html`. |
+| `--reference-library <file>` | Same format as `--pdf-library` (title+url pairs), rendered as a separate "Reference Documents" sidebar category — for links that aren't surgical planning material (e.g. oral contrast administration guides). Defaults to `./reference-library.json`; used only if present. Only takes effect together with `--html`. |
 | `--manual-protocols <file>` | Path to hand-authored protocols that don't exist as a folder on the scanner. Defaults to `./manual-protocols.json`; used only if present. Merged in before every output (`--json`/`--html`/`--peds-weights`), not just `--html`. |
 | `--protocol-images-base <url>` | Base URL where per-protocol reference images are hosted, named `<protocolNumber>.<ext>` (e.g. `9.2.png`) — no list to maintain, each protocol page just attempts to load its own image and hides it client-side if that one 404s. Only takes effect together with `--html`. |
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
@@ -119,16 +120,17 @@ Parsed 42 protocol(s) from /path/to/input
 
 GE's raw export only ever gives you numeric/coded values for a few fields that are genuinely site-specific and can't be derived from the export itself — you have to look them up once at the scanner console (or its documentation) and record them here. These files are plain, hand-editable JSON that you keep alongside the tool (not regenerated data — re-parsing never touches values you've already filled in).
 
-### `protocol-overrides.json` — per-protocol title, notes, exclusion, send destination
+### `protocol-overrides.json` — per-protocol title, notes, exclusion, send destination, contrast
 
-Keyed by protocol number (the same `slotNumber`/protocol number shown in the console summary and HTML book) — this is also the easiest way to **rename a protocol's displayed title or exclude it**, without touching the scanner export:
+Keyed by protocol number (the same `slotNumber`/protocol number shown in the console summary and HTML book) — this is also the easiest way to **rename a protocol's displayed title, exclude it, or correct its displayed contrast volume/rate**, without touching the scanner export:
 
 ```json
 {
   "9.2":  { "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
   "9.4":  { "excluded": true },
   "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
-  "3.7":  { "title": "CT Neck Soft Tissue (renamed)" }
+  "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
+  "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" }
 }
 ```
 
@@ -136,8 +138,9 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `notes` — free-text scanning notes shown inline in the HTML protocol book.
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
 - `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
+- `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
 
-`--init-overrides` scaffolds every protocol number here with all four fields blank, so renaming or excluding a protocol is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all six fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 
@@ -154,16 +157,16 @@ Each is a flat `{ "code": "label" }` map:
 
 All three are only used when `--html` is passed.
 
-### `logo.png`, `pdf-library.json`, `manual-protocols.json`, `changelog.json`, protocol images — optional extras for the HTML book
+### `logo.png`, `pdf-library.json`, `reference-library.json`, `manual-protocols.json`, `changelog.json`, protocol images — optional extras for the HTML book
 
 - **`logo.png`** (or `.jpg`/`.gif`/`.svg`, path set via `--logo`) is embedded as a base64 data URI so the generated book stays a single offline-capable file — no logo file means no logo markup is rendered at all.
-- **`pdf-library.json`** is a hand-maintained list of externally hosted PDFs, since there's no naming convention that could locate arbitrary files on your own server:
+- **`pdf-library.json`** and **`reference-library.json`** are both hand-maintained lists of externally hosted PDFs (or images — any URL works, it's just a link), since there's no naming convention that could locate arbitrary files on your own server. Same format for both:
   ```json
   [
     { "title": "Knee Replacement Planning Guide", "url": "https://your-server.example.com/pdfs/knee-planning.pdf" }
   ]
   ```
-  Rendered as its own "Surgical Planning Protocols" sidebar category, opening each PDF in a new tab.
+  `pdf-library.json` renders as its own "Surgical Planning Protocols" sidebar category; `reference-library.json` renders as a separate "Reference Documents" category for anything that doesn't belong under surgical planning (e.g. pediatric/adult oral contrast administration guides). Each opens its links in a new tab.
 - **`manual-protocols.json`** adds protocols that don't exist as a folder on the scanner (e.g. something still being planned). Merged in before every output, so a manual entry shows up in `--json`/`--html`/`--peds-weights` exactly like a scanner-discovered one:
   ```json
   [
@@ -219,9 +222,9 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
   An optional **Recent Changes** entry (top-level, alongside Adult/Pediatric) links directly to a table built from `changelog.json` — a hand-typed log of what changed and why, most-recent-first, each row linking to that protocol's page when its number still matches one in the book. Not derived from the scanner export; nothing here is automatic. Omitted entirely when the file is missing or empty.
 
-  An optional **Surgical Planning Protocols** entry also sits alongside Adult/Pediatric, listing any externally hosted PDFs from `pdf-library.json`.
+  Two optional entries also sit alongside Adult/Pediatric, both hand-maintained title+url lists (see below): **Surgical Planning Protocols** from `pdf-library.json`, and **Reference Documents** from `reference-library.json` (for links that don't belong under surgical planning, e.g. contrast administration guides).
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
-- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show any IV contrast volume/injection rate under the series name, then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index, pitch, and rotation time per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
+- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show the IV contrast volume/rate under the series name (overridable per protocol via `contrastVolume`/`contrastRate` in `protocol-overrides.json`), then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index — shown only when mA is actually automatic, since a fixed-mA group's noise index field can be a stale leftover value — pitch, and rotation time per acquisition group, plus a reconstruction table with thickness/interval/kernel. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel.
 - Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.
 - Printing (browser print / print-to-PDF) hides the sidebar and expands the protocol card to the full page width.
 
@@ -271,7 +274,7 @@ src/main/java/com/protocolbook/
   html/
     ProtocolBookHtmlWriter.java   --html output (AHS-themed click-only-sidebar single-page app)
     HtmlSupport.java              Shared HTML escaping/CSS used by both HTML writers
-    PdfLibrary.java                --pdf-library loading
+    PdfLibrary.java                --pdf-library and --reference-library loading (same format, two separate lists)
     Changelog.java                 --changelog loading (hand-typed "Recent Changes" log)
     ProtocolImages.java           --protocol-images-base URL convention
     PediatricWeightSheetWriter.java --peds-weights output

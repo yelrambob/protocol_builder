@@ -35,20 +35,22 @@ import java.util.TreeSet;
  * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--changelog <file>]
  *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
- *             [--logo <file>] [--pdf-library <file>] [--manual-protocols <file>]
+ *             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
  *             [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
  * --plane-labels to ./plane-labels.json, --category-labels to ./category-labels.json, --logo to
- * ./logo.png, --pdf-library to ./pdf-library.json, --manual-protocols to ./manual-protocols.json,
- * --changelog to ./changelog.json, all only if present. --logo is embedded (base64) into the
- * generated book; --book-title sets the browser tab title and the welcome-page heading (defaults
- * to "Protocol Book"); --changelog is a hand-typed "what changed and why" log (see Changelog) -
- * rendered as the book's "Recent Changes" sidebar entry/table, most recent first, omitted
- * entirely when the file is missing/empty; --pdf-library entries are
- * linked (title+url pairs you maintain by hand - see PdfLibrary) since those files live on their
- * own separate server. --category-labels maps a protocol number's whole-number prefix (1-9) to a
+ * ./logo.png, --pdf-library to ./pdf-library.json, --reference-library to ./reference-library.json,
+ * --manual-protocols to ./manual-protocols.json, --changelog to ./changelog.json, all only if
+ * present. --logo is embedded (base64) into the generated book; --book-title sets the browser tab
+ * title and the welcome-page heading (defaults to "Protocol Book"); --changelog is a hand-typed
+ * "what changed and why" log (see Changelog) - rendered as the book's "Recent Changes" sidebar
+ * entry/table, most recent first, omitted entirely when the file is missing/empty; --pdf-library
+ * and --reference-library are both title+url lists you maintain by hand (same format - see
+ * PdfLibrary), rendered as two separate sidebar categories ("Surgical Planning Protocols" and
+ * "Reference Documents" respectively) since those files live on their own separate server.
+ * --category-labels maps a protocol number's whole-number prefix (1-9) to a
  * reading category, matching the scanner console's own numbering (1 Head, 2 Face, ... 9 Lower
  * Ext. by default - see LabelConfig) - a prefix with no mapping (e.g. 10, QA/phantom protocols)
  * is left out of the generated book entirely. --manual-protocols adds protocols that don't exist
@@ -72,6 +74,7 @@ public class Main {
             File categoryLabelsFile = new File("category-labels.json");
             File logoFile = new File("logo.png");
             File pdfLibraryFile = new File("pdf-library.json");
+            File referenceLibraryFile = new File("reference-library.json");
             File manualProtocolsFile = new File("manual-protocols.json");
             String protocolImagesBase = null, protocolImagesExt = "png";
             boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
@@ -87,6 +90,7 @@ public class Main {
                 else if ("--category-labels".equals(args[i])) categoryLabelsFile = new File(args[++i]);
                 else if ("--logo".equals(args[i])) logoFile = new File(args[++i]);
                 else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
+                else if ("--reference-library".equals(args[i])) referenceLibraryFile = new File(args[++i]);
                 else if ("--manual-protocols".equals(args[i])) manualProtocolsFile = new File(args[++i]);
                 else if ("--protocol-images-base".equals(args[i])) protocolImagesBase = args[++i];
                 else if ("--protocol-images-ext".equals(args[i])) protocolImagesExt = args[++i];
@@ -158,13 +162,15 @@ public class Main {
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
                 String logoDataUri = loadLogoDataUri(logoFile);
                 List<PdfLibrary.Entry> pdfLibrary = PdfLibrary.load(pdfLibraryFile);
+                List<PdfLibrary.Entry> referenceLibrary = PdfLibrary.load(referenceLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
                 List<Changelog.Entry> changelog = Changelog.load(changelogFile);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, protocolImages, bookTitle, changelog, htmlFile);
+                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, referenceLibrary, protocolImages, bookTitle, changelog, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
                         + (pdfLibrary.isEmpty() ? "" : " (" + pdfLibrary.size() + " PDF link(s) from " + pdfLibraryFile + ")")
+                        + (referenceLibrary.isEmpty() ? "" : " (" + referenceLibrary.size() + " reference doc link(s) from " + referenceLibraryFile + ")")
                         + (protocolImages != null ? " (protocol images from " + protocolImagesBase + "/<number>." + protocolImagesExt + ")" : "")
                         + (changelog.isEmpty() ? "" : " (" + changelog.size() + " changelog entr" + (changelog.size() == 1 ? "y" : "ies") + " from " + changelogFile + ")"));
             }
