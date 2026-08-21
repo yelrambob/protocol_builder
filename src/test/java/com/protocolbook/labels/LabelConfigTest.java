@@ -25,4 +25,16 @@ class LabelConfigTest {
         assertNull(defaults.categoryForNumber(10));
         assertNull(defaults.categoryForNumber(20));
     }
+
+    @Test void asirCodeMapsToItsPercentage() {
+        assertEquals("40%", defaults.asir("AR40"));
+        assertEquals("50%", defaults.asir("AR50"));
+        assertEquals("0%", defaults.asir("AR0"));
+        assertEquals("40%", defaults.asir("ar40"), "the AR prefix should be matched case-insensitively");
+    }
+
+    @Test void unrecognizedAsirCodeFallsBackToTheRawCode() {
+        assertEquals("STD", defaults.asir("STD"));
+        assertNull(defaults.asir(null));
+    }
 }
