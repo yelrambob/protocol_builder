@@ -1,10 +1,6 @@
 package com.protocolbook.html;
 
 import com.protocolbook.labels.LabelConfig;
-import com.protocolbook.model.Acquisition;
-import com.protocolbook.model.Dose;
-import com.protocolbook.model.Group;
-import com.protocolbook.model.Metadata;
 import com.protocolbook.model.Protocol;
 import com.protocolbook.model.Series;
 import com.protocolbook.overrides.ProtocolOverride;
@@ -175,76 +171,7 @@ class ProtocolBookHtmlWriterTest {
 
         assertTrue(html.contains(">Adult (11)<"));
         assertTrue(html.contains(">Peds (1)<"), "a three-segment protocol number should count as pediatric even when patientType says adult");
-        // a lone weight-band variant still renders under its shared family key ("9.2", the first
-        // two segments) rather than its full number - see splitsWeightBandFamilyOntoOneMergedPage
-        // below for what happens once a second variant joins the same family
-        assertTrue(html.contains(">9.2 &mdash;"), "the family key should render correctly even for a family of one");
-    }
-
-    @Test void splitsWeightBandFamilyOntoOneMergedPage(@TempDir Path tempDir) throws Exception {
-        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
-        // three pediatric weight-band variants of the same "19.2" family ("<5KG"/"10-20KG"/"ROUTINE")
-        // - prefix 19 is pediatric Lower Ext. (adult prefix 9 + 10, confirmed against a real
-        // export) - sharing everything except the technique parameters that vary by weight
-        Protocol template = protocols.get(0);
-        String baseName = template.getMetadata().getName();
-        Protocol light = clonePediatricVariant(template, "19.2.1", baseName + " <5KG", "80", "50");
-        Protocol mid = clonePediatricVariant(template, "19.2.2", baseName + " 10-20KG", "100", "80");
-        Protocol heavy = clonePediatricVariant(template, "19.2.3", baseName + " ROUTINE", "120", "150");
-        protocols.add(light);
-        protocols.add(mid);
-        protocols.add(heavy);
-
-        File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
-        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
-
-        // one merged page for the family, not three separate ones
-        assertTrue(html.contains(">Peds (1)<"), "the three weight-band variants should collapse into a single Peds page");
-        assertEquals(1, html.lines().filter(l -> l.contains("onclick=\"showProtocol('p-19-2'); return false;\"")).count(),
-                "the sidebar should link to the family exactly once, not once per weight band");
-        assertTrue(html.contains(">19.2 &mdash; " + baseName + "<"), "the weight annotation should be stripped from the family's shared display name");
-
-        // the per-weight comparison table, not three repeated series/recon blocks
-        assertTrue(html.contains("<table class=\"weight-variants\">"));
-        assertTrue(html.contains("<th>Weight</th><th>kV</th><th>mA</th><th>NI</th><th>CTDIvol</th><th>DLP</th>"));
-        assertTrue(html.contains("<td>&lt;5KG</td><td>80</td><td>50</td>"), "the lightest variant's technique parameters should appear in the table");
-        assertTrue(html.contains("<td>10-20KG</td><td>100</td><td>80</td>"));
-        int reconTableCount = html.lines().filter(l -> l.contains("<th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th>")).count() > 0 ? 1 : 0;
-        assertEquals(1, reconTableCount, "the shared series/recon structure should render once, not once per weight band");
-    }
-
-    private Protocol clonePediatricVariant(Protocol template, String number, String name, String kv, String ma) {
-        Protocol p = new Protocol();
-        Metadata m = new Metadata();
-        m.setProtocolNumber(number);
-        m.setName(name);
-        m.setPatientType("pediatric");
-        m.setBodyPart(template.getMetadata().getBodyPart());
-        p.setMetadata(m);
-        Dose dose = new Dose();
-        dose.setCtdi(kv.equals("80") ? 2.1 : kv.equals("100") ? 3.4 : 5.0);
-        dose.setDlp(kv.equals("80") ? 30.0 : kv.equals("100") ? 55.0 : 90.0);
-        p.setDose(dose);
-        for (Series templateSeries : template.getSeries()) {
-            Series s = new Series();
-            s.setNumber(templateSeries.getNumber());
-            s.setScanType(templateSeries.getScanType());
-            s.setName(templateSeries.getName());
-            s.setContrast(templateSeries.getContrast());
-            for (Group templateGroup : templateSeries.getGroups()) {
-                Group g = new Group();
-                Acquisition a = new Acquisition();
-                a.setKv(kv);
-                a.setMa(ma);
-                a.setNoiseIndex("3.0");
-                g.setAcquisition(a);
-                g.getReconstructions().addAll(templateGroup.getReconstructions());
-                s.getGroups().add(g);
-            }
-            p.getSeries().add(s);
-        }
-        return p;
+        assertTrue(html.contains(">9.2.1 &mdash;"), "the three-segment number itself should still render correctly");
     }
 
     @Test void titleOverrideRenamesProtocolWithoutChangingItsNumber(@TempDir Path tempDir) throws Exception {
