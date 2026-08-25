@@ -36,7 +36,7 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", kneeNotes); // "CT LWR EXT KNEE WITH CONTRAST"
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // two different protocols share this name (9.4 lower-extremities and 8.2 pelvis); only 9.4 is excluded
@@ -79,7 +79,7 @@ class ProtocolBookHtmlWriterTest {
         protocols.get(0).getMetadata().setProtocolNumber("10.1");
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains(">10.1 &mdash;"), "a protocol number prefix with no category mapping (e.g. 10) must not appear anywhere in the book");
@@ -94,7 +94,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(new HashMap<>(), new HashMap<>(), categoryOverrides);
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Knee/Ankle/Foot ("), "category-labels.json should override the default label for prefix 9");
@@ -109,7 +109,7 @@ class ProtocolBookHtmlWriterTest {
 
         File out = tempDir.resolve("book.html").toFile();
         LabelConfig labels = new LabelConfig(kernelLabels, new HashMap<>(), new HashMap<>()); // default plane labels apply
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), labels, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mA</th>"), "scout series should render as a single Plane/kV/mA table");
@@ -130,7 +130,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // The knee protocol's axial group has SmartmA active (milliAmpsMode="2"): milliAmps=15 is a
@@ -145,17 +145,62 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(new File("src/test/resources/head-fixed-dose-protocol"));
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("120 kV &middot; 310 mA"), "milliAmpsMode=\"0\" should render the fixed mA value, not the 160-360 min-max range");
         assertFalse(html.contains("160-360 mA"), "a fixed-dose group must never show a min-max mA range");
     }
 
+    @Test void noiseIndexIsHiddenWhenMaIsFixedNotAuto(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        // the knee protocol's axial group has SmartmA active in the fixture (see the test above) -
+        // flip it to fixed mA here while leaving noiseIndex populated, matching a stale/leftover
+        // value the console can carry even when SmartmA isn't actually controlling this group.
+        com.protocolbook.model.Acquisition fixedMaWithStaleNi = null;
+        String flippedProtocolNumber = null;
+        outer:
+        for (Protocol p : protocols) for (com.protocolbook.model.Series s : p.getSeries()) for (com.protocolbook.model.Group g : s.getGroups())
+            if (g.getAcquisition().getMaMode() != null && g.getAcquisition().getNoiseIndex() != null) {
+                fixedMaWithStaleNi = g.getAcquisition();
+                flippedProtocolNumber = p.getMetadata().getProtocolNumber();
+                break outer;
+            }
+        assertTrue(fixedMaWithStaleNi != null, "fixture should still include a SmartmA group with a noise index to flip for this test");
+        fixedMaWithStaleNi.setMaMode(null);
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        // other protocols' own SmartmA groups legitimately still show NI - scope the check to just
+        // the one protocol section whose group was flipped to fixed mA.
+        String id = "p-" + flippedProtocolNumber.replaceAll("[^a-zA-Z0-9]+", "-");
+        int sectionStart = html.indexOf("<section id=\"" + id + "\"");
+        String section = html.substring(sectionStart, html.indexOf("</section>", sectionStart));
+        assertFalse(section.contains("(NI "), "a fixed-mA group must not show a noise index, even if the field still carries a stale value");
+        assertTrue(section.contains(HtmlSupport.esc(fixedMaWithStaleNi.getMa()) + " mA"), "the fixed mA value should still render");
+    }
+
+    @Test void contrastVolumeAndRateOverridesReplaceParsedValues(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        Map<String, ProtocolOverride> overrides = new HashMap<>();
+        ProtocolOverride override = new ProtocolOverride();
+        override.setContrastVolume("125");
+        override.setContrastRate("4.0");
+        overrides.put("9.2", override); // "CT LWR EXT KNEE WITH CONTRAST"
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains("IV contrast: 125 mL @ 4.0 mL/s"), "contrastVolume/contrastRate overrides should replace the parsed IV volume/flow rate");
+    }
+
     @Test void doesNotRenderADetectorLine(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("Detector:"), "the detector-label feature was removed; the acquisition line must not show a Detector field");
@@ -166,7 +211,7 @@ class ProtocolBookHtmlWriterTest {
         protocols.get(0).getMetadata().setPatientType("Pediatric");
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"), "the other 11 protocols should stay under Adult");
@@ -180,7 +225,7 @@ class ProtocolBookHtmlWriterTest {
         protocols.get(0).getMetadata().setPatientType("adult"); // deliberately contradicts the number-based signal
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Adult (11)<"));
@@ -196,7 +241,7 @@ class ProtocolBookHtmlWriterTest {
         overrides.put("9.2", renamed);
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">9.2 &mdash; Knee Protocol (Renamed)<"), "sidebar link should use the title override");
@@ -215,7 +260,7 @@ class ProtocolBookHtmlWriterTest {
             }
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // the scout table (Plane/kV/mA) must never be preceded by a contrast paragraph
@@ -230,7 +275,7 @@ class ProtocolBookHtmlWriterTest {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         String logoDataUri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, logoDataUri, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, logoDataUri, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<div class=\"menu-logo\"><img src=\"" + logoDataUri + "\""), "logo should appear at the top of the sidebar");
@@ -242,7 +287,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsLogoElementsWhenNoneProvided(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         // CSS rules for these classes are always present (static styling); only the rendered <img>/<div> markup should be absent
@@ -257,7 +302,7 @@ class ProtocolBookHtmlWriterTest {
         List<PdfLibrary.Entry> pdfLibrary = List.of(
                 new PdfLibrary.Entry("Knee Replacement Planning Guide", "https://example.com/pdfs/knee-planning.pdf"),
                 new PdfLibrary.Entry("Hip Replacement Planning Guide", "https://example.com/pdfs/hip-planning.pdf"));
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains(">Surgical Planning (2)<"), "PDF library should show as its own category with a count");
@@ -271,17 +316,46 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsPdfLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("Surgical Planning"));
+    }
+
+    @Test void rendersReferenceLibraryAsASeparateCategoryFromPdfLibrary(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        List<PdfLibrary.Entry> pdfLibrary = List.of(
+                new PdfLibrary.Entry("Knee Replacement Planning Guide", "https://example.com/pdfs/knee-planning.pdf"));
+        List<PdfLibrary.Entry> referenceLibrary = List.of(
+                new PdfLibrary.Entry("Pediatric Oral Contrast Administration", "https://example.com/pdfs/peds-oral-contrast.pdf"),
+                new PdfLibrary.Entry("Adult Oral Contrast Administration", "https://example.com/pdfs/adult-oral-contrast.pdf"));
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, pdfLibrary, referenceLibrary, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(html.contains(">Surgical Planning (1)<"));
+        assertTrue(html.contains(">Reference Documents (2)<"), "reference library should render as its own category, separate from Surgical Planning");
+        assertTrue(html.contains("<a href=\"https://example.com/pdfs/peds-oral-contrast.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Pediatric Oral Contrast Administration</a>"));
+        assertTrue(html.contains("<a href=\"https://example.com/pdfs/adult-oral-contrast.pdf\" target=\"_blank\" rel=\"noopener noreferrer\">Adult Oral Contrast Administration</a>"));
+        // 4 top-level buckets: Adult + Peds (both always shown) + Surgical Planning + Reference Documents
+        long bucketCount = html.lines().filter(l -> l.contains("class=\"menu-category\"")).count();
+        assertEquals(4, bucketCount);
+    }
+
+    @Test void omitsReferenceLibraryCategoryWhenEmpty(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        assertFalse(html.contains("Reference Documents"));
     }
 
     @Test void rendersProtocolImageByConventionWithClientSideFallback(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
         ProtocolImages images = new ProtocolImages("https://example.com/protocol-images", "png");
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, images, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, images, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<img class=\"protocol-image\" src=\"https://example.com/protocol-images/9.2.png\" "
@@ -293,7 +367,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void omitsProtocolImageWhenNoBaseConfigured(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("class=\"protocol-image\""));
@@ -302,7 +376,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void customBookTitleSetsPageTitleAndWelcomeHeading(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, "AHS CT Protocols", null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, "AHS CT Protocols", null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<title>AHS CT Protocols</title>"), "browser tab title should use the custom book title");
@@ -312,7 +386,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void blankBookTitleFallsBackToDefault(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<title>Protocol Book</title>"));
@@ -322,7 +396,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void sidebarSubmenusOnlyOpenOnClickNotHover(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains(":hover>.submenu"), "hovering must not by itself reveal any drill-down level's submenu");
@@ -350,7 +424,7 @@ class ProtocolBookHtmlWriterTest {
         List<Changelog.Entry> changelog = Changelog.load(changelogFile);
 
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, changelog, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, changelog, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("Recent Changes (3)"), "sidebar should show a count of all 3 changelog entries");
@@ -371,7 +445,7 @@ class ProtocolBookHtmlWriterTest {
     @Test void changelogOmittedWhenEmpty(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
-        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, out);
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
         assertFalse(html.contains("Recent Changes"));
