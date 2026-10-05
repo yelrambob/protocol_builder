@@ -49,7 +49,14 @@ class ProtocolOverridesTest {
         other.getSendDestinations().add("AHSPACS");
         assertEquals(Arrays.asList("AHSPACS"), stroke.sendDestinationsFor(other), "unlisted recons keep the exported hosts");
 
-        assertEquals(Arrays.asList("AXAIL TYPO"), stroke.unmatchedReconNames(Arrays.asList(cta, other)));
+        com.protocolbook.model.Series series = new com.protocolbook.model.Series();
+        series.setNumber(2);
+        com.protocolbook.model.Group group = new com.protocolbook.model.Group();
+        group.getReconstructions().addAll(Arrays.asList(cta, other));
+        series.getGroups().add(group);
+        java.util.List<String> problems = stroke.problems(Arrays.asList(series));
+        assertEquals(1, problems.size());
+        assertTrue(problems.get(0).contains("AXAIL TYPO"));
     }
 
     @Test void mergeTemplateLabelsEachEntryWithItsProtocolNameAndSortsByNumber(@TempDir Path tempDir) throws Exception {
@@ -75,6 +82,34 @@ class ProtocolOverridesTest {
         assertTrue(new File(file.getPath() + ".bak").isFile(), "the previous version is kept as a backup");
         assertTrue(new String(java.nio.file.Files.readAllBytes(new File(file.getPath() + ".bak").toPath())).contains("keep me"));
         assertNull(after.get("9.10").getTitle() == null || after.get("9.10").getTitle().isEmpty() ? null : "x", "protocolName must not become a title override");
+    }
+
+    @Test void reconAndSeriesOverridesLoadAndTyposAreReported(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("protocol-overrides.json").toFile();
+        java.nio.file.Files.write(file.toPath(), ("{ \"9.2\": {"
+                + " \"contrastDelay\": \"90\","
+                + " \"series\": { \"2\": { \"kv\": 120, \"pitch\": \"0.984\", \"kvp\": \"x\" }, \"7\": { \"ma\": \"1\" } },"
+                + " \"recons\": { \"axial knee det 2.5mm\": { \"kernel\": \"Bone\", \"wwwl\": \"400/40\", \"wl\": \"x\" } } } }").getBytes());
+        ProtocolOverride knee = ProtocolOverrides.load(file).get("9.2");
+        assertEquals("90", knee.getContrastDelay());
+        assertEquals("120", knee.seriesField(2, "kv"), "numbers typed without quotes still load");
+        assertNull(knee.seriesField(3, "kv"));
+
+        com.protocolbook.model.Reconstruction axial = new com.protocolbook.model.Reconstruction();
+        axial.setName("AXIAL KNEE DET 2.5MM");
+        assertEquals("Bone", knee.reconField(axial, "kernel"));
+        assertEquals("400/40", knee.reconField(axial, "wwwl"));
+        assertNull(knee.reconField(axial, "asir"));
+
+        com.protocolbook.model.Series series = new com.protocolbook.model.Series();
+        series.setNumber(2);
+        com.protocolbook.model.Group group = new com.protocolbook.model.Group();
+        group.getReconstructions().add(axial);
+        series.getGroups().add(group);
+        String problems = String.join("\n", knee.problems(Arrays.asList(series)));
+        assertTrue(problems.contains("unknown field 'kvp'"), problems);
+        assertTrue(problems.contains("unknown field 'wl'"), problems);
+        assertTrue(problems.contains("no series 7"), problems);
     }
 
     private static Map<String, String> names(String... numbers) {

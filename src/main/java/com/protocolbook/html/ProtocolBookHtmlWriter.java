@@ -258,17 +258,26 @@ public class ProtocolBookHtmlWriter {
                 html.append("<p class=\"destination\">Auto-sends to: ").append(HtmlSupport.esc(String.join(", ", autoSend))).append("</p>\n");
         }
 
-        if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
-            html.append("<p class=\"dose\">Exam CTDIvol: ").append(HtmlSupport.esc(doseRange(examDose(p, true, false), examDose(p, true, true))))
-                    .append(" mGy &middot; DLP: ").append(HtmlSupport.esc(doseRange(examDose(p, false, false), examDose(p, false, true))))
+        String typedCtdi = override == null ? null : blankToNull(override.getExamCtdi());
+        String typedDlp = override == null ? null : blankToNull(override.getExamDlp());
+        if (typedCtdi != null || typedDlp != null || (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null))) {
+            String ctdi = p.getDose() == null ? null : doseRange(examDose(p, true, false), examDose(p, true, true));
+            String dlp = p.getDose() == null ? null : doseRange(examDose(p, false, false), examDose(p, false, true));
+            html.append("<p class=\"dose\">Exam CTDIvol: ").append(shown(ctdi, typedCtdi))
+                    .append(" mGy &middot; DLP: ").append(shown(dlp, typedDlp))
                     .append(" mGy&middot;cm (min-max mA)</p>\n");
         }
 
+        int seriesStart = html.length();
         for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
         if (needsThreeD(p, override)) {
             appendThreeDSeries(html, "3D MIP");
             appendThreeDSeries(html, "3D VR");
         }
+
+        if (html.indexOf("class=\"override\"", seriesStart) >= 0 || (typedCtdi != null || typedDlp != null))
+            html.append("<p class=\"override-note\"><span class=\"override\">Underlined</span> values are set by hand in protocol-overrides.json"
+                    + " instead of taken from the scanner (in the HTML book, hover over one to see the scanner's value).</p>\n");
 
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(HtmlSupport.esc(String.join("; ", p.getNotes()))).append("</p>\n");
@@ -282,8 +291,8 @@ public class ProtocolBookHtmlWriter {
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
         if (!scout) appendContrast(html, s, override);
-        if (scout) appendScoutTable(html, s, labels);
-        else for (Group g : s.getGroups()) appendGroup(html, g, labels, override);
+        if (scout) appendScoutTable(html, s, labels, override);
+        else for (Group g : s.getGroups()) appendGroup(html, g, s.getNumber(), labels, override);
         html.append("</div>\n");
     }
 
@@ -317,13 +326,13 @@ public class ProtocolBookHtmlWriter {
     }
 
     // Scouts are localizer images, not diagnostic reconstructions - one compact table beats a full acquisition block per plane.
-    private void appendScoutTable(StringBuilder html, Series s, LabelConfig labels) {
+    private void appendScoutTable(StringBuilder html, Series s, LabelConfig labels, ProtocolOverride override) {
         html.append("<table class=\"recons\">\n<tr><th>Plane</th><th>kV</th><th>mA</th></tr>\n");
         for (Group g : s.getGroups()) {
             Acquisition a = g.getAcquisition();
             String plane = g.getReconstructions().isEmpty() ? null : g.getReconstructions().get(0).getPlane();
-            html.append("<tr><td>").append(HtmlSupport.esc(labels.plane(plane))).append("</td><td>").append(HtmlSupport.esc(a.getKv()))
-                    .append("</td><td>").append(HtmlSupport.esc(a.getMa())).append("</td></tr>\n");
+            html.append("<tr><td>").append(HtmlSupport.esc(labels.plane(plane))).append("</td><td>").append(shown(a.getKv(), seriesField(override, s.getNumber(), "kv")))
+                    .append("</td><td>").append(shown(a.getMa(), seriesField(override, s.getNumber(), "ma"))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
@@ -332,29 +341,61 @@ public class ProtocolBookHtmlWriter {
         return override != null ? override.sendDestinationsFor(r) : r.getSendDestinations();
     }
 
-    private void appendGroup(StringBuilder html, Group g, LabelConfig labels, ProtocolOverride override) {
+    private void appendGroup(StringBuilder html, Group g, int seriesNumber, LabelConfig labels, ProtocolOverride override) {
         Acquisition a = g.getAcquisition();
         boolean autoMa = a.isAutoMa();
-        html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
-                .append(autoMa ? HtmlSupport.esc(a.getMinMa()) + "-" + HtmlSupport.esc(a.getMaxMa()) : HtmlSupport.esc(a.getMa())).append(" mA");
+        String typedMa = seriesField(override, seriesNumber, "ma");
+        html.append("<p class=\"acquisition\">").append(shown(a.getKv(), seriesField(override, seriesNumber, "kv"))).append(" kV &middot; ")
+                .append(shown(autoMa ? a.getMinMa() + "-" + a.getMaxMa() : a.getMa(), typedMa)).append(" mA");
         // Noise Index only means anything under SmartmA/auto-mA - a fixed mA group's noiseIndex
         // field can be a stale leftover value, so don't show it when mA isn't actually automatic.
-        if (autoMa && a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
+        String typedNi = seriesField(override, seriesNumber, "noiseIndex");
+        if (typedNi != null || (autoMa && a.getNoiseIndex() != null))
+            html.append(" (NI ").append(shown(autoMa ? a.getNoiseIndex() : null, typedNi)).append(")");
         Double pitch = a.pitchRatio();
-        if (pitch != null) html.append(" &middot; pitch ").append(String.format(Locale.ROOT, "%.3f", pitch)).append(":1");
-        else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
-        if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
-        if (g.ctdi(true) != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(doseRange(g.ctdi(false), g.ctdi(true)))).append(" mGy");
+        String scannerPitch = pitch != null ? String.format(Locale.ROOT, "%.3f", pitch) + ":1" : a.getPitch();
+        String typedPitch = seriesField(override, seriesNumber, "pitch");
+        if (typedPitch != null && typedPitch.matches("[0-9.]+")) typedPitch += ":1";
+        if (scannerPitch != null || typedPitch != null) html.append(" &middot; pitch ").append(shown(scannerPitch, typedPitch));
+        String typedRotation = seriesField(override, seriesNumber, "rotationTime");
+        if (a.getRotationTime() != null || typedRotation != null)
+            html.append(" &middot; ").append(shown(a.getRotationTime(), typedRotation)).append(" s rotation");
+        String typedCtdi = seriesField(override, seriesNumber, "ctdi");
+        if (g.ctdi(true) != null || typedCtdi != null)
+            html.append(" &middot; CTDIvol ").append(shown(g.ctdi(true) == null ? null : doseRange(g.ctdi(false), g.ctdi(true)), typedCtdi)).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th><th>Auto-send</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
-            html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
-                    .append("</td><td>").append(HtmlSupport.esc(r.getThickness()))
-                    .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel())))
-                    .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig())))
-                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r)))
-                    .append("</td><td>").append(HtmlSupport.esc(String.join(", ", sendDestinations(r, override)))).append("</td></tr>\n");
+            html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(shown(r.getName(), reconField(override, r, "name")))
+                    .append("</td><td>").append(shown(r.getThickness(), reconField(override, r, "thickness")))
+                    .append("</td><td>").append(shown(r.getInterval(), reconField(override, r, "interval")))
+                    .append("</td><td>").append(shown(labels.kernel(r.getKernel()), reconField(override, r, "kernel")))
+                    .append("</td><td>").append(shown(labels.asir(r.getIterativeConfig()), reconField(override, r, "asir")))
+                    .append("</td><td>").append(shown(windowWidthLevel(r), reconField(override, r, "wwwl")))
+                    .append("</td><td>").append(shown(String.join(", ", r.getSendDestinations()), reconField(override, r, "sendTo") == null ? null
+                            : String.join(", ", sendDestinations(r, override)))).append("</td></tr>\n");
         }
         html.append("</table>\n");
+    }
+
+    // A value as the book shows it: the scanner's, or - when one's typed in protocol-overrides.json - the typed
+    // one, marked so a reader can tell it was set by hand and see what the scanner itself has.
+    private static String shown(String scannerValue, String typed) {
+        if (typed == null) return HtmlSupport.esc(scannerValue);
+        String scanner = scannerValue == null || scannerValue.trim().isEmpty() ? "(none)" : scannerValue;
+        return "<span class=\"override\" title=\"Set in protocol-overrides.json - scanner has: " + HtmlSupport.esc(scanner) + "\">"
+                + HtmlSupport.esc(typed) + "</span>";
+    }
+
+    private static String seriesField(ProtocolOverride override, int seriesNumber, String field) {
+        return override == null ? null : override.seriesField(seriesNumber, field);
+    }
+
+    private static String reconField(ProtocolOverride override, Reconstruction r, String field) {
+        return override == null ? null : override.reconField(r, field);
+    }
+
+    private static String blankToNull(String v) {
+        return v == null || v.trim().isEmpty() ? null : v.trim();
     }
 
     // Display window as "width/level" (e.g. "1500/250"), the order it's dialed in at the console.
@@ -387,14 +428,15 @@ public class ProtocolBookHtmlWriter {
         }
         // contrastVolume/contrastRate overrides let a person correct what's shown here without
         // needing to touch the underlying scanner export.
-        String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
-                ? override.getContrastVolume() : s.getContrast().getIvVolume();
-        String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
-                ? override.getContrastRate() : s.getContrast().getFlowRate();
+        String typedVolume = override == null ? null : blankToNull(override.getContrastVolume());
+        String typedRate = override == null ? null : blankToNull(override.getContrastRate());
+        String typedDelay = override == null ? null : blankToNull(override.getContrastDelay());
+        if (typedDelay != null && typedDelay.matches("[0-9.]+")) typedDelay += " sec";
+        String volume = s.getContrast().getIvVolume(), rate = s.getContrast().getFlowRate();
         html.append("<p class=\"contrast\"><strong>When ordered with contrast:</strong>");
-        if (volume != null) html.append("<br>\nContrast Dose: ").append(HtmlSupport.esc(volume)).append(" mL");
-        if (rate != null) html.append("<br>\nInjection rate: ").append(HtmlSupport.esc(rate)).append(" mL/s");
-        if (delayText != null) html.append("<br>\nDelay timing: ").append(HtmlSupport.esc(delayText));
+        if (volume != null || typedVolume != null) html.append("<br>\nContrast Dose: ").append(shown(volume, typedVolume)).append(" mL");
+        if (rate != null || typedRate != null) html.append("<br>\nInjection rate: ").append(shown(rate, typedRate)).append(" mL/s");
+        if (delayText != null || typedDelay != null) html.append("<br>\nDelay timing: ").append(shown(delayText, typedDelay));
         html.append("</p>\n");
     }
 
@@ -507,6 +549,8 @@ public class ProtocolBookHtmlWriter {
             "th,td{border:1px solid #dde3ea;padding:.4rem .6rem;font-size:.9rem;text-align:left;}" +
             "th{background:var(--ahs-blue);color:#fff;}" +
             "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:#555;}" +
+            ".override{border-bottom:1px dotted currentColor;font-weight:600;cursor:help;}" +
+            ".override-note{font-size:.85rem;color:#555;}" +
 
             "@media print{.main-menu{display:none;}body{background:#fff;}.main-content{margin-left:0;padding:0;}" +
             "section.protocol-view{box-shadow:none;border-radius:0;max-width:none;}}";

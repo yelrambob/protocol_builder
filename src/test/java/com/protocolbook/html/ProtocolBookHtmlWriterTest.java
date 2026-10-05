@@ -147,10 +147,10 @@ class ProtocolBookHtmlWriterTest {
         String page = html.substring(knee92, next > 0 ? next : html.length());
         assertTrue(page.contains("Auto-sends to: AHSPACS, RAPID 1"), "the header summary should include the typed hosts");
         int row = page.indexOf("<td>AXIAL KNEE DET 2.5MM</td>");
-        assertTrue(page.substring(row, page.indexOf("</tr>", row)).contains("<td>AHSPACS, RAPID 1</td>"));
+        assertTrue(page.substring(row, page.indexOf("</tr>", row)).contains("\">AHSPACS, RAPID 1</span></td>"));
         int other = page.indexOf("<td>AXIAL KNEE DET 0.625 mm</td>");
         assertTrue(page.substring(other, page.indexOf("</tr>", other)).contains("<td>AHSPACS</td>"), "recons not named keep the exported hosts");
-        assertEquals(1, html.split("RAPID 1</td>", -1).length - 1, "only the named recon in 9.2 changes");
+        assertEquals(1, html.split("RAPID 1</span></td>", -1).length - 1, "only the named recon in 9.2 changes");
     }
 
     @Test void protocolsSentToAwServerGetSeparate3dMipAndVrSeriesAtTheBottom(@TempDir Path tempDir) throws Exception {
@@ -179,6 +179,40 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(page(html, "4.2").contains("<h3>3D MIP</h3>"), "threeD: true forces the 3D series on");
         assertFalse(page(html, "8.2").contains("3D MIP"), "threeD: false keeps them off");
         assertFalse(page(html, "9.8").contains("3D MIP"), "AHSPACS alone is not AW Server");
+    }
+
+    @Test void everyRenderedParameterCanBeOverriddenAndIsMarkedAsHandSet(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        ProtocolOverride knee = new ProtocolOverride();
+        Map<String, String> series2 = new HashMap<>();
+        series2.put("kv", "120"); series2.put("ma", "80-500"); series2.put("noiseIndex", "7"); series2.put("pitch", "0.984");
+        series2.put("rotationTime", "0.8"); series2.put("ctdi", "5-30");
+        knee.getSeries().put("2", series2);
+        Map<String, String> scout = new HashMap<>();
+        scout.put("kv", "100");
+        knee.getSeries().put("1", scout);
+        Map<String, String> axial = new HashMap<>();
+        axial.put("name", "AXIAL KNEE BONE 2.5MM"); axial.put("thickness", "3"); axial.put("interval", "3"); axial.put("kernel", "Bone");
+        axial.put("asir", "40%"); axial.put("wwwl", "2000/500"); axial.put("sendTo", "AHSPACS, AW");
+        knee.getRecons().put("AXIAL KNEE DET 2.5MM", axial);
+        knee.setContrastDelay("90");
+        knee.setExamCtdi("10-60");
+        Map<String, ProtocolOverride> overrides = new HashMap<>();
+        overrides.put("9.2", knee);
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String page = page(new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8), "9.2");
+
+        for (String typed : new String[] { "120", "80-500", "7", "0.984:1", "0.8", "5-30", "100", "AXIAL KNEE BONE 2.5MM", "3", "Bone", "40%",
+                "2000/500", "AHSPACS, AW", "90 sec", "10-60" })
+            assertTrue(page.contains("\">" + typed + "</span>"), "typed value should be shown and marked: " + typed);
+        assertTrue(page.contains("title=\"Set in protocol-overrides.json - scanner has: 1500/250\""), "hover shows the scanner's own value");
+        assertTrue(page.contains("override-note"), "pages with hand-set values say so");
+        int other = page.indexOf("<td>AXIAL KNEE DET 0.625 mm</td>");
+        assertTrue(other > 0, "recons not named keep the scanner's values");
+        assertFalse(page.substring(other, page.indexOf("</tr>", other)).contains("override"));
+        assertTrue(page.contains("<h3>3D MIP</h3>"), "a typed AW destination still triggers the 3D series");
     }
 
     private static String page(String html, String number) {
@@ -254,7 +288,8 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains("Contrast Dose: 125 mL<br>\nInjection rate: 4.0 mL/s"), "contrastVolume/contrastRate overrides should replace the parsed IV volume/flow rate");
+        assertTrue(html.contains("Contrast Dose: <span class=\"override\" title=\"Set in protocol-overrides.json - scanner has: 100\">125</span> mL<br>\n"
+                + "Injection rate: <span class=\"override\" title=\"Set in protocol-overrides.json - scanner has: 2.0\">4.0</span> mL/s"), "contrastVolume/contrastRate overrides should replace the parsed IV volume/flow rate");
     }
 
     @Test void doesNotRenderADetectorLine(@TempDir Path tempDir) throws Exception {
