@@ -19,6 +19,9 @@ repositories {
 dependencies {
     implementation 'org.apache.poi:poi-ooxml:5.4.1'
     implementation 'org.json:json:20240303'
+    // --pdf: renders the same per-protocol HTML to PDF in pure Java (no browser needed); jsoup turns it into the XHTML DOM the renderer wants
+    implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
+    implementation 'org.jsoup:jsoup:1.17.2'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.13.1'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.13.1'
 }

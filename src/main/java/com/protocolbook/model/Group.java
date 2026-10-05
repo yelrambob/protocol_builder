@@ -10,24 +10,25 @@ public class Group {
     public List<Reconstruction> getReconstructions(){return reconstructions;}
 
     /**
-     * Factor that turns the exported dose into the worst case at max mA. The console calculates
+     * Factor that turns the exported dose into the dose at another mA. The console calculates
      * CTDI/DLP at the group's milliAmps value, and both scale linearly with mA (kV, rotation,
-     * pitch and collimation fixed), so under auto-mA it's maxMa / milliAmps. 1 for fixed mA, or
-     * when either value is missing.
+     * pitch and collimation fixed), so under auto-mA the dose at minMa/maxMa is the exported
+     * figure x minMa (or maxMa) / milliAmps. 1 for fixed mA, or when a value is missing.
      */
-    public double maxMaDoseFactor() {
+    public double doseFactor(boolean max) {
         if (!acquisition.isAutoMa()) return 1;
-        Double ma = Acquisition.number(acquisition.getMa()), max = Acquisition.number(acquisition.getMaxMa());
-        return ma == null || max == null || ma <= 0 ? 1 : max / ma;
+        Double ma = Acquisition.number(acquisition.getMa());
+        Double target = Acquisition.number(max ? acquisition.getMaxMa() : acquisition.getMinMa());
+        return ma == null || target == null || ma <= 0 ? 1 : target / ma;
     }
 
-    /** CTDIvol at max mA (see {@link #maxMaDoseFactor}); null if the export has none. */
-    public Double maxCtdi() {
-        return dose == null || dose.getCtdi() == null ? null : dose.getCtdi() * maxMaDoseFactor();
+    /** CTDIvol at min or max mA (see {@link #doseFactor}); null if the export has none. */
+    public Double ctdi(boolean max) {
+        return dose == null || dose.getCtdi() == null ? null : dose.getCtdi() * doseFactor(max);
     }
 
-    /** DLP at max mA (see {@link #maxMaDoseFactor}); null if the export has none. */
-    public Double maxDlp() {
-        return dose == null || dose.getDlp() == null ? null : dose.getDlp() * maxMaDoseFactor();
+    /** DLP at min or max mA (see {@link #doseFactor}); null if the export has none. */
+    public Double dlp(boolean max) {
+        return dose == null || dose.getDlp() == null ? null : dose.getDlp() * doseFactor(max);
     }
 }

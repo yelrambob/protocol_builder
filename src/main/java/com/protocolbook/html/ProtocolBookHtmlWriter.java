@@ -45,35 +45,8 @@ public class ProtocolBookHtmlWriter {
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, List<PdfLibrary.Entry> referenceLibrary,
                        ProtocolImages protocolImages, String bookTitle, List<Changelog.Entry> changelog, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
-        // bucket (Adult/Peds) -> protocol-number whole-number prefix -> protocols.
-        // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
-        // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
-        // excluded one at a time in protocol-overrides.json.
-        Map<String, Map<Integer, List<Protocol>>> tree = new LinkedHashMap<String, Map<Integer, List<Protocol>>>();
-        // Adult and Peds always get a top-level entry, even with zero protocols in one of them -
-        // the sidebar's shape shouldn't depend on what happens to be in this particular export.
-        for (String bucket : BUCKET_ORDER) tree.put(bucket, new LinkedHashMap<Integer, List<Protocol>>());
-        for (Protocol p : protocols) {
-            if (isExcluded(p, overrides)) continue;
-            int prefix = groupKey(p);
-            if (labels.categoryForNumber(prefix) == null) continue;
-            String bucket = patientBucket(p);
-            tree.computeIfAbsent(bucket, k -> new LinkedHashMap<Integer, List<Protocol>>())
-                    .computeIfAbsent(prefix, k -> new ArrayList<Protocol>())
-                    .add(p);
-        }
-        // Adult follows the console's own numbering; Peds is alphabetical by the name shown, which
-        // is easier to scan when many peds protocols differ only by weight/age band.
-        for (Map.Entry<String, Map<Integer, List<Protocol>>> bucket : tree.entrySet())
-            for (List<Protocol> group : bucket.getValue().values()) {
-                if ("Peds".equals(bucket.getKey()))
-                    group.sort(Comparator.comparing((Protocol p) -> String.valueOf(displayName(p, overrides)), String.CASE_INSENSITIVE_ORDER)
-                            .thenComparing((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b))));
-                else group.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
-            }
-
+        Map<String, Map<Integer, List<Protocol>>> tree = tree(protocols, overrides, labels);
         List<String> buckets = new ArrayList<String>(tree.keySet());
-        buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
 
         Map<Protocol, String> ids = new IdentityHashMap<Protocol, String>();
         Map<String, Protocol> byNumber = new HashMap<String, Protocol>();
@@ -145,6 +118,49 @@ public class ProtocolBookHtmlWriter {
         return outFile;
     }
 
+    /**
+     * Book order, shared with {@link ProtocolBookPdfWriter}: bucket (Adult, then Peds) ->
+     * protocol-number prefix (ascending) -> protocols, excluded ones left out.
+     */
+    Map<String, Map<Integer, List<Protocol>>> tree(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
+        // bucket (Adult/Peds) -> protocol-number whole-number prefix -> protocols.
+        // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
+        // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
+        // excluded one at a time in protocol-overrides.json.
+        Map<String, Map<Integer, List<Protocol>>> tree = new LinkedHashMap<String, Map<Integer, List<Protocol>>>();
+        // Adult and Peds always get a top-level entry, even with zero protocols in one of them -
+        // the sidebar's shape shouldn't depend on what happens to be in this particular export.
+        for (String bucket : BUCKET_ORDER) tree.put(bucket, new LinkedHashMap<Integer, List<Protocol>>());
+        for (Protocol p : protocols) {
+            if (isExcluded(p, overrides)) continue;
+            int prefix = groupKey(p);
+            if (labels.categoryForNumber(prefix) == null) continue;
+            String bucket = patientBucket(p);
+            tree.computeIfAbsent(bucket, k -> new LinkedHashMap<Integer, List<Protocol>>())
+                    .computeIfAbsent(prefix, k -> new ArrayList<Protocol>())
+                    .add(p);
+        }
+        // Adult follows the console's own numbering; Peds is alphabetical by the name shown, which
+        // is easier to scan when many peds protocols differ only by weight/age band.
+        for (Map.Entry<String, Map<Integer, List<Protocol>>> bucket : tree.entrySet())
+            for (List<Protocol> group : bucket.getValue().values()) {
+                if ("Peds".equals(bucket.getKey()))
+                    group.sort(Comparator.comparing((Protocol p) -> String.valueOf(displayName(p, overrides)), String.CASE_INSENSITIVE_ORDER)
+                            .thenComparing((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b))));
+                else group.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
+            }
+
+        List<String> buckets = new ArrayList<String>(tree.keySet());
+        buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
+        Map<String, Map<Integer, List<Protocol>>> ordered = new LinkedHashMap<String, Map<Integer, List<Protocol>>>();
+        for (String bucket : buckets) {
+            Map<Integer, List<Protocol>> byGroup = new LinkedHashMap<Integer, List<Protocol>>();
+            for (Integer prefix : sortedGroups(tree.get(bucket))) byGroup.put(prefix, tree.get(bucket).get(prefix));
+            ordered.put(bucket, byGroup);
+        }
+        return ordered;
+    }
+
     private List<Integer> sortedGroups(Map<Integer, List<Protocol>> byGroup) {
         List<Integer> groups = new ArrayList<Integer>(byGroup.keySet());
         groups.sort(Comparator.naturalOrder());
@@ -174,7 +190,7 @@ public class ProtocolBookHtmlWriter {
         try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MIN_VALUE; }
     }
 
-    private String protocolId(Protocol p, int index) {
+    String protocolId(Protocol p, int index) {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         String base = number != null && !number.isEmpty() ? number : ("unnamed-" + index);
         return "p-" + base.replaceAll("[^a-zA-Z0-9]+", "-");
@@ -196,7 +212,7 @@ public class ProtocolBookHtmlWriter {
 
     // A "title" override renames how a protocol displays in the book without touching its
     // underlying scanner name (which still flows through --json/console output unchanged).
-    private String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
+    String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         ProtocolOverride override = overrides.get(number);
@@ -204,7 +220,7 @@ public class ProtocolBookHtmlWriter {
         return m == null ? null : m.getName();
     }
 
-    private void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels,
+    void appendProtocol(StringBuilder html, Protocol p, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                                  String logoDataUri, ProtocolImages protocolImages) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
@@ -238,8 +254,9 @@ public class ProtocolBookHtmlWriter {
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
-            html.append("<p class=\"dose\">Max exam CTDIvol: ").append(HtmlSupport.esc(dose(maxExamDose(p, true)))).append(" mGy &middot; Max DLP: ")
-                    .append(HtmlSupport.esc(dose(maxExamDose(p, false)))).append(" mGy&middot;cm (at max mA)</p>\n");
+            html.append("<p class=\"dose\">Exam CTDIvol: ").append(HtmlSupport.esc(doseRange(examDose(p, true, false), examDose(p, true, true))))
+                    .append(" mGy &middot; DLP: ").append(HtmlSupport.esc(doseRange(examDose(p, false, false), examDose(p, false, true))))
+                    .append(" mGy&middot;cm (min-max mA)</p>\n");
         }
 
         for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
@@ -300,10 +317,7 @@ public class ProtocolBookHtmlWriter {
         if (pitch != null) html.append(" &middot; pitch ").append(String.format(Locale.ROOT, "%.3f", pitch)).append(":1");
         else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
-        if (g.maxCtdi() != null) {
-            html.append(" &middot; ").append(autoMa ? "Max CTDIvol " : "CTDIvol ").append(HtmlSupport.esc(dose(g.maxCtdi()))).append(" mGy");
-            if (autoMa) html.append(" (at ").append(HtmlSupport.esc(a.getMaxMa())).append(" mA)");
-        }
+        if (g.ctdi(true) != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(doseRange(g.ctdi(false), g.ctdi(true)))).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
@@ -334,20 +348,24 @@ public class ProtocolBookHtmlWriter {
     }
 
     // The exported exam totals are calculated at each group's milliAmps value; swap each group's
-    // share for its max-mA figure (see Group#maxMaDoseFactor) so the total is the worst case too.
-    private Double maxExamDose(Protocol p, boolean ctdi) {
+    // share for its min- or max-mA figure (see Group#doseFactor) so the total is a range too.
+    private Double examDose(Protocol p, boolean ctdi, boolean max) {
         Double total = ctdi ? p.getDose().getCtdi() : p.getDose().getDlp();
         if (total == null) return null;
         for (Series s : p.getSeries())
             for (Group g : s.getGroups()) {
                 Double stored = ctdi ? g.getDose().getCtdi() : g.getDose().getDlp();
-                if (stored != null) total += stored * (g.maxMaDoseFactor() - 1);
+                if (stored != null) total += stored * (g.doseFactor(max) - 1);
             }
         return total;
     }
 
-    private static String dose(Double v) {
-        return v == null ? null : String.format(Locale.ROOT, "%.2f", v);
+    // "4.35-61.38", or just "44.58" when min and max are the same (fixed mA).
+    private static String doseRange(Double min, Double max) {
+        if (max == null) return null;
+        String hi = String.format(Locale.ROOT, "%.2f", max);
+        String lo = min == null ? hi : String.format(Locale.ROOT, "%.2f", min);
+        return lo.equals(hi) ? hi : lo + "-" + hi;
     }
 
     private boolean isExcluded(Protocol p, Map<String, ProtocolOverride> overrides) {

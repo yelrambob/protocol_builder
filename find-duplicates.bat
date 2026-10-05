@@ -1,20 +1,20 @@
 @echo off
 setlocal
 
+rem Lists protocols that are effectively duplicates - identical settings filed under two
+rem numbers, or the same name with different settings (and what differs) - plus the
+rem protocol-overrides.json lines that would hide the extra copies from the book.
+rem Writes duplicates.html. Nothing on the scanner is changed.
+rem
 rem Usage:
-rem   run-protocol-book.bat
+rem   find-duplicates.bat
 rem       Uses the "protocol data" folder in this repo (not tracked by git -
 rem       put your real exported protocol folders there).
-rem   run-protocol-book.bat "C:\path\to\ProtocolData"
-rem   Or just drag-and-drop your ProtocolData folder onto this .bat file in Explorer.
-rem
-rem Optional second argument: an overrides file other than protocol-overrides.json.
+rem   find-duplicates.bat "C:\path\to\ProtocolData"
+rem   Or drag-and-drop your ProtocolData folder onto this .bat file in Explorer.
 
 set INPUT=%~1
 if "%INPUT%"=="" set INPUT=protocol data
-
-set OVERRIDES=%~2
-if "%OVERRIDES%"=="" set OVERRIDES=protocol-overrides.json
 
 cd /d "%~dp0"
 
@@ -33,7 +33,7 @@ rem and its libraries fail with "PKIX path building failed".
 set "WIN_TRUST=-Djavax.net.ssl.trustStoreType=Windows-ROOT"
 set "GRADLE_OPTS=%GRADLE_OPTS% %WIN_TRUST%"
 
-call gradlew.bat %WIN_TRUST% run --args="'%INPUT%' --html book.html --pdf book.pdf --overrides '%OVERRIDES%'"
+call gradlew.bat %WIN_TRUST% run --args="'%INPUT%' --duplicates duplicates.html"
 if errorlevel 1 (
     echo.
     echo FAILED - see the error above. Nothing was written.
@@ -43,6 +43,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done. Open book.html in a browser, or print book.pdf.
+echo Done. Open duplicates.html in a browser.
 pause
 endlocal

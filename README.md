@@ -89,6 +89,8 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `<input>` (positional, required unless `Protocols.xlsm` exists locally) | Path to a `.xlsm`/`.xlsx`/`.xls` workbook, **or** a folder to recursively walk for GE protocol export subfolders. Defaults to `Protocols.xlsm` in the current directory if omitted. |
 | `--json <dir>` | Write one normalized JSON file per protocol into `<dir>` (created if needed). See [JSON output](#json-output) below. |
 | `--html <file>` | Render every parsed protocol as a single self-contained, browsable HTML file at `<file>`. See [HTML protocol book](#html-protocol-book) below. |
+| `--pdf <file>` | The same book as a printable PDF: cover, contents with page numbers, then one protocol per page with the same content and order as the HTML book (minus `--protocol-images-base` images). Close the PDF in your viewer before re-running, or Windows won't let it be overwritten. |
+| `--duplicates <file>` | Write a list of protocols that are effectively duplicates — identical settings under two numbers, or the same name with different settings (with what differs) — plus the `protocol-overrides.json` lines that would hide the extra copies. See [Duplicate protocols](#duplicate-protocols). |
 | `--book-title <text>` | Sets the browser tab title and the welcome-page heading in the HTML book. Defaults to "Protocol Book". Only takes effect together with `--html`. |
 | `--changelog <file>` | Path to a hand-typed "what changed and why" log, rendered as the book's "Recent Changes" sidebar entry/table (see below). Defaults to `./changelog.json`; used only if present. Only takes effect together with `--html`. |
 | `--peds-weights <file>` | Write a printable sheet of protocols whose patient type is pediatric, with any weight-in-kg found in the protocol name annotated with its pound equivalent. |
@@ -140,7 +142,7 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 ```
 
 - `title` — overrides how the protocol displays in the HTML book (sidebar link and page header) without changing its underlying scanner name, which still flows through unchanged everywhere else (console summary, `--json`). Leave blank/omit to keep the scanner name.
-- `notes` — free-text scanning notes shown inline in the HTML protocol book.
+- `notes` — free-text scanning/study notes, shown in a highlighted "Scanning notes" box near the top of the protocol's page in the HTML book and PDF.
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
 - `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
@@ -227,6 +229,15 @@ No scan range found for (set "referenceSheet" or "scanRange" in protocol-overrid
 
 Fix a wrong or missing match with `referenceSheet` (name the sheet) or `scanRange` (type it) in `protocol-overrides.json`.
 
+## Duplicate protocols
+
+`find-duplicates.bat` writes `duplicates.html`, comparing every protocol's actual settings (series, kV/mA, pitch, rotation, scan delay, contrast, and every reconstruction's name/kernel/thickness/ASIR/window), ignoring its name, number and body part:
+
+- **Identical settings** — the same exam saved twice, typically under two category numbers (e.g. 8.4 and 9.6 "CT ENTIRE LWR EXT"). The report suggests the `"excluded": true` lines to paste into `protocol-overrides.json`, keeping the most recently updated copy; change which one if another copy is filed in the right place.
+- **Same name, different settings** — listed with exactly what differs (e.g. `Series 2, group 1: recon 5 kernel: 4 / 8`), since one may be an older copy of the other.
+
+Excluding only hides a protocol from the book and PDF; nothing on the scanner changes. Delete it on the scanner itself if it should go for good.
+
 ## Output formats
 
 ### Console summary
@@ -249,7 +260,7 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
   Two optional entries also sit alongside Adult/Peds, both hand-maintained title+url lists (see above): **Surgical Planning** from `pdf-library.json`, and **Reference Documents** from `reference-library.json` (for links that don't belong under surgical planning, e.g. contrast administration guides).
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
-- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level max CTDIvol/DLP, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show the IV contrast volume/rate under the series name, then "Protocol with contrast · 70 sec contrast delay" (or "Protocol without contrast"; the delay is GE's `groupDelay`) (overridable per protocol via `contrastVolume`/`contrastRate` in `protocol-overrides.json`), then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index — shown only when mA is actually automatic, since a fixed-mA group's noise index field can be a stale leftover value — pitch, rotation time and CTDIvol per acquisition group. Pitch is shown as the real ratio (e.g. `0.992:1`): GE exports it as table travel in detector rows, so it's that value over `macroRowNumber` (127/128 = 0.992, 88/64 = 1.375). CTDIvol (and the exam totals) is the worst case at max mA: the console calculates it at the group's `milliAmps` value and dose scales linearly with mA, so under SmartmA it's the exported figure × maxMa / milliAmps; fixed-mA groups show the exported figure unchanged. That's followed by plus a reconstruction table with thickness/interval/kernel/ASIR. ASIR/ASIR-V level is read straight from the scanner's own "AR"+percentage convention (e.g. "AR40" → "40%") — no labels file needed, unlike kernel codes, since it's a fixed GE convention rather than a site-specific code. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel. Each pediatric weight-band variant of a protocol (GE numbers these with a shared "major.minor" prefix plus a per-weight third segment, e.g. "15.7.1"/"15.7.2"/"15.7.3") still gets its own page and its own sidebar entry. Adult protocols are listed in protocol-number order; Peds protocols are listed alphabetically by name within each category.
+- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP (min-max mA range), any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show the IV contrast volume/rate under the series name (overridable per protocol via `contrastVolume`/`contrastRate` in `protocol-overrides.json`), then "Protocol with contrast · 70 sec contrast delay" (or "Protocol without contrast"; the delay is GE's `groupDelay`), then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index — shown only when mA is actually automatic, since a fixed-mA group's noise index field can be a stale leftover value — pitch, rotation time and CTDIvol per acquisition group. Pitch is shown as the real ratio (e.g. `0.992:1`): GE exports it as table travel in detector rows, so it's that value over `macroRowNumber` (127/128 = 0.992, 88/64 = 1.375). CTDIvol (and the exam totals) is shown as a min-max range across the SmartmA range (e.g. `9.67-61.38 mGy`): the console calculates it at the group's `milliAmps` value and dose scales linearly with mA, so it's the exported figure × minMa / milliAmps to × maxMa / milliAmps; fixed-mA groups show the exported figure as a single value. That's followed by a reconstruction table with thickness/interval/kernel/ASIR. ASIR/ASIR-V level is read straight from the scanner's own "AR"+percentage convention (e.g. "AR40" → "40%") — no labels file needed, unlike kernel codes, since it's a fixed GE convention rather than a site-specific code. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel. Each pediatric weight-band variant of a protocol (GE numbers these with a shared "major.minor" prefix plus a per-weight third segment, e.g. "15.7.1"/"15.7.2"/"15.7.3") still gets its own page and its own sidebar entry. Adult protocols are listed in protocol-number order; Peds protocols are listed alphabetically by name within each category.
 - Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.
 - Printing (browser print / print-to-PDF) hides the sidebar and expands the protocol card to the full page width.
 
@@ -261,12 +272,13 @@ Thin wrappers around the Gradle invocations above, for people who'd rather doubl
 
 | Script | Equivalent to |
 |---|---|
-| `run-protocol-book.sh` / `.bat` `[input] [overrides-file]` | `--html book.html --overrides <overrides-file>` — the main "generate the book" command. Second argument optionally names an overrides file other than `protocol-overrides.json`. |
+| `run-protocol-book.sh` / `.bat` `[input] [overrides-file]` | `--html book.html --pdf book.pdf --overrides <overrides-file>` — the main "generate the book" command. Second argument optionally names an overrides file other than `protocol-overrides.json`. |
 | `init-protocol-overrides.sh` / `.bat` `[input]` | `--init-overrides` |
 | `init-kernel-labels.sh` / `.bat` `[input]` | `--init-kernel-labels` |
 | `init-plane-labels.sh` / `.bat` `[input]` | `--init-plane-labels` |
 | `init-category-labels.sh` / `.bat` `[input]` | `--init-category-labels` |
 | `pediatric-weight-sheet.sh` / `.bat` `[input]` | `--peds-weights peds-weights.html` |
+| `find-duplicates.sh` / `.bat` `[input]` | `--duplicates duplicates.html` |
 
 Example:
 

@@ -466,18 +466,19 @@ class ProtocolBookHtmlWriterTest {
         assertFalse(html.contains("pitch 127"), "the raw row code must not be shown");
     }
 
-    @Test void ctdiIsScaledUpToMaxMaUnderSmartMa(@TempDir Path tempDir) throws Exception {
+    @Test void ctdiIsShownAsMinToMaxMaRangeUnderSmartMa(@TempDir Path tempDir) throws Exception {
         String html = render(new ProtocolFolderWalker().parse(FIXTURE_ROOT), tempDir);
-        // knee axial: exported CTDIvol 1.45 mGy at milliAmps=15, max 635 mA -> 1.45 * 635 / 15
-        assertTrue(html.contains("Max CTDIvol 61.38 mGy (at 635 mA)"), "group CTDIvol should be the max-mA figure");
-        assertTrue(html.contains("Max exam CTDIvol: "), "exam total should be labeled as the max");
-        assertFalse(html.contains("CTDIvol 1.45 mGy"), "the low-mA exported figure must not be shown as-is");
+        // knee axial: exported CTDIvol 1.45 mGy at milliAmps=15, 100-635 mA -> 1.45 * 100 / 15 to 1.45 * 635 / 15
+        assertTrue(html.contains("CTDIvol 9.67-61.38 mGy"), "group CTDIvol should span min to max mA");
+        assertTrue(html.contains("Exam CTDIvol: "), "exam total should be shown");
+        assertTrue(html.contains("(min-max mA)"), "exam total should say it's a min-max mA range");
+        assertFalse(html.contains("CTDIvol 1.45 mGy"), "the exported figure at the stale milliAmps must not be shown as-is");
     }
 
     @Test void fixedMaCtdiIsShownUnscaled(@TempDir Path tempDir) throws Exception {
         String html = render(new ProtocolFolderWalker().parse(new File("src/test/resources/head-fixed-dose-protocol")), tempDir);
         assertTrue(html.contains("&middot; CTDIvol 44.58 mGy"), "fixed mA has no max to scale to");
-        assertFalse(html.contains("Max CTDIvol"));
+        assertFalse(html.contains("44.58-"), "fixed mA shows one figure, not a range");
     }
 
     @Test void showsContrastProtocolWithItsContrastDelay(@TempDir Path tempDir) throws Exception {
