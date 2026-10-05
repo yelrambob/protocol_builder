@@ -451,4 +451,60 @@ class ProtocolBookHtmlWriterTest {
         assertFalse(html.contains("Recent Changes"));
         assertFalse(html.contains("id=\"recent-changes\""));
     }
+
+    private static String render(List<Protocol> protocols, Path tempDir) throws Exception {
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, new HashMap<>(), DEFAULT_LABELS, null, null, null, null, null, null, out);
+        return new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+    }
+
+    @Test void pitchIsShownAsTheRealRatioNotGesRowCode(@TempDir Path tempDir) throws Exception {
+        String html = render(new ProtocolFolderWalker().parse(FIXTURE_ROOT), tempDir);
+        // exported pitch is table travel in detector rows: 127 over 128 rows, 33 over 64 rows
+        assertTrue(html.contains("pitch 0.992:1"), "pitch 127 on 128 rows should read 0.992:1");
+        assertTrue(html.contains("pitch 0.516:1"), "pitch 33 on 64 rows should read 0.516:1");
+        assertFalse(html.contains("pitch 127"), "the raw row code must not be shown");
+    }
+
+    @Test void ctdiIsScaledUpToMaxMaUnderSmartMa(@TempDir Path tempDir) throws Exception {
+        String html = render(new ProtocolFolderWalker().parse(FIXTURE_ROOT), tempDir);
+        // knee axial: exported CTDIvol 1.45 mGy at milliAmps=15, max 635 mA -> 1.45 * 635 / 15
+        assertTrue(html.contains("Max CTDIvol 61.38 mGy (at 635 mA)"), "group CTDIvol should be the max-mA figure");
+        assertTrue(html.contains("Max exam CTDIvol: "), "exam total should be labeled as the max");
+        assertFalse(html.contains("CTDIvol 1.45 mGy"), "the low-mA exported figure must not be shown as-is");
+    }
+
+    @Test void fixedMaCtdiIsShownUnscaled(@TempDir Path tempDir) throws Exception {
+        String html = render(new ProtocolFolderWalker().parse(new File("src/test/resources/head-fixed-dose-protocol")), tempDir);
+        assertTrue(html.contains("&middot; CTDIvol 44.58 mGy"), "fixed mA has no max to scale to");
+        assertFalse(html.contains("Max CTDIvol"));
+    }
+
+    @Test void showsContrastProtocolWithItsContrastDelay(@TempDir Path tempDir) throws Exception {
+        String html = render(new ProtocolFolderWalker().parse(FIXTURE_ROOT), tempDir);
+        assertTrue(html.contains("Protocol with contrast &middot; 70 sec contrast delay"), "groupDelay=70.0 should read as a 70 sec contrast delay");
+    }
+
+    @Test void nonContrastSeriesSaysSo(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        for (Protocol p : protocols) for (Series s : p.getSeries()) s.getContrast().setIv(false);
+        String html = render(protocols, tempDir);
+        assertTrue(html.contains("Protocol without contrast &middot; 70 sec scan delay"));
+        assertFalse(html.contains("Protocol with contrast"));
+    }
+
+    @Test void pedsProtocolsAreAlphabeticalWhileAdultStaysInNumberOrder(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        // two peds protocols in the same category, numbered against alphabetical order
+        Protocol zebra = null, apple = null;
+        for (Protocol p : protocols) {
+            if ("9.2".equals(p.getMetadata().getProtocolNumber())) zebra = p;
+            if ("9.6".equals(p.getMetadata().getProtocolNumber())) apple = p;
+        }
+        zebra.getMetadata().setProtocolNumber("9.1.1"); zebra.getMetadata().setName("ZEBRA PEDS");
+        apple.getMetadata().setProtocolNumber("9.1.2"); apple.getMetadata().setName("apple peds");
+        String html = render(protocols, tempDir);
+        assertTrue(html.indexOf(">9.1.2 &mdash; apple peds<") < html.indexOf(">9.1.1 &mdash; ZEBRA PEDS<"), "peds should sort by name, case-insensitively");
+        assertTrue(html.indexOf(">9.4 &mdash;") < html.indexOf(">9.8 &mdash;"), "adult should keep protocol-number order");
+    }
 }
