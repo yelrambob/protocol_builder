@@ -78,6 +78,7 @@ Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides
              [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
              [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
              [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
+             [--reference-workbook <file>]... [--reference-folder <dir>]
              [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
 ```
 
@@ -101,6 +102,8 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--manual-protocols <file>` | Path to hand-authored protocols that don't exist as a folder on the scanner. Defaults to `./manual-protocols.json`; used only if present. Merged in before every output (`--json`/`--html`/`--peds-weights`), not just `--html`. |
 | `--protocol-images-base <url>` | Base URL where per-protocol reference images are hosted, named `<protocolNumber>.<ext>` (e.g. `9.2.png`) — no list to maintain, each protocol page just attempts to load its own image and hides it client-side if that one 404s. Only takes effect together with `--html`. |
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
+| `--reference-workbook <file>` | One of your own one-sheet-per-protocol reference workbooks to take scan ranges from (see [Scan ranges](#scan-ranges-from-your-reference-workbooks)). Repeat for more than one. |
+| `--reference-folder <dir>` | Every `.xlsx`/`.xlsm`/`.xls` in this folder is used as a reference workbook too. Defaults to `./reference workbooks`; used only if present. |
 | `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed. Never touches existing entries. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
@@ -130,7 +133,9 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
   "9.4":  { "excluded": true },
   "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
   "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
-  "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" }
+  "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" },
+  "8.6":  { "referenceSheet": "CT Routine Abd-Pel" },
+  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" }
 }
 ```
 
@@ -139,8 +144,10 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
 - `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
+- `referenceSheet` — the reference-workbook sheet to take this protocol's scan range from, when matching by name picks the wrong one or none (exact sheet name, case-insensitive).
+- `scanRange` — type the scan range in directly; wins over any reference workbook.
 
-`--init-overrides` scaffolds every protocol number here with all six fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all eight fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 
@@ -202,6 +209,24 @@ Kernel labels file kernel-labels.json: added 3 new code(s) - fill in the "" valu
     - AXIAL BONE+
 ```
 
+## Scan ranges from your reference workbooks
+
+The scan range (e.g. "Diaphragm to Ischial Tuberosities") isn't in the scanner export at all, so the book takes it from the site's own reference workbooks: one sheet per protocol, labels in column A, and a `Scan Range/Direction` row with one column per phase under a `Phase` row (the layout of `AMG_CT_Protocols_Adult.xlsm` / `AMG_Protocols_PEDS.xlsx`). Put the workbooks in a `reference workbooks` folder next to the `.bat` files (not tracked by git, like `protocol data`) and every run picks them up; no extra arguments are needed.
+
+Those sheets have no protocol numbers, so each scanner protocol is matched to a sheet by name: abbreviations are expanded (`LWR EXT` = `Lower Ext.`, `CERVICAL SPINE` = `C-spine`, `ABD/PEL` = `Abd-Pel`), contrast wording and "Routine"/"PEDS" are ignored, and the closest sheet wins only if it's a clear winner. Adult protocols only match sheets in the adult workbook, and peds only the PEDS one (a workbook or sheet with "PEDS" in its name). A sheet whose phases all share one range shows it once; otherwise each phase is listed.
+
+Every run prints which sheet each protocol got and which got none:
+
+```
+Scan ranges from 79 reference sheet(s): 11 protocol(s) matched, 1 without one
+  9.2 CT LWR EXT KNEE WITH CONTRAST  <-  AMG_CT_Protocols_Adult.xlsm > CT Lower Ext. Knee
+  ...
+No scan range found for (set "referenceSheet" or "scanRange" in protocol-overrides.json):
+  8.6 CT BONY PELVIS WITH CONTRAST
+```
+
+Fix a wrong or missing match with `referenceSheet` (name the sheet) or `scanRange` (type it) in `protocol-overrides.json`.
+
 ## Output formats
 
 ### Console summary
@@ -224,7 +249,7 @@ Always printed (see [Command-line reference](#command-line-reference) above). Us
 
   Two optional entries also sit alongside Adult/Peds, both hand-maintained title+url lists (see above): **Surgical Planning** from `pdf-library.json`, and **Reference Documents** from `reference-library.json` (for links that don't belong under surgical planning, e.g. contrast administration guides).
 - The **main panel** shows exactly one protocol at a time as a white reading card on the blue background, selected via the sidebar (a small inline script toggles visibility — no page reload). A welcome view with the logo and the book's title (`--book-title`, defaults to "Protocol Book") is shown until something is picked; the same title also sets the browser tab title.
-- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level CTDIvol/DLP dose, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show the IV contrast volume/rate under the series name (overridable per protocol via `contrastVolume`/`contrastRate` in `protocol-overrides.json`), then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index — shown only when mA is actually automatic, since a fixed-mA group's noise index field can be a stale leftover value — pitch, and rotation time per acquisition group, plus a reconstruction table with thickness/interval/kernel/ASIR. ASIR/ASIR-V level is read straight from the scanner's own "AR"+percentage convention (e.g. "AR40" → "40%") — no labels file needed, unlike kernel codes, since it's a fixed GE convention rather than a site-specific code. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel. Each pediatric weight-band variant of a protocol (GE numbers these with a shared "major.minor" prefix plus a per-weight third segment, e.g. "15.7.1"/"15.7.2"/"15.7.3") still gets its own page and its own sidebar entry.
+- Each protocol shows its number, name (or its `title` override, if set — see below), patient type/body part, an optional reference image (from `--protocol-images-base`), exam-level max CTDIvol/DLP, any scanning notes and send-destination from `protocol-overrides.json`, and every series. Scout series get a compact plane/kV/mA table and never show contrast/injection info (scouts are localizers, not diagnostic acquisitions). Other series show the IV contrast volume/rate under the series name, then "Protocol with contrast · 70 sec contrast delay" (or "Protocol without contrast"; the delay is GE's `groupDelay`) (overridable per protocol via `contrastVolume`/`contrastRate` in `protocol-overrides.json`), then kV/mA (or the min-max range when SmartmA/auto-mA is active) with noise index — shown only when mA is actually automatic, since a fixed-mA group's noise index field can be a stale leftover value — pitch, rotation time and CTDIvol per acquisition group. Pitch is shown as the real ratio (e.g. `0.992:1`): GE exports it as table travel in detector rows, so it's that value over `macroRowNumber` (127/128 = 0.992, 88/64 = 1.375). CTDIvol (and the exam totals) is the worst case at max mA: the console calculates it at the group's `milliAmps` value and dose scales linearly with mA, so under SmartmA it's the exported figure × maxMa / milliAmps; fixed-mA groups show the exported figure unchanged. That's followed by plus a reconstruction table with thickness/interval/kernel/ASIR. ASIR/ASIR-V level is read straight from the scanner's own "AR"+percentage convention (e.g. "AR40" → "40%") — no labels file needed, unlike kernel codes, since it's a fixed GE convention rather than a site-specific code. Derived MPR reformats (coronal/sagittal views reconstructed from an axial series) are shown indented and italicized under their parent reconstruction, inheriting its kernel. Each pediatric weight-band variant of a protocol (GE numbers these with a shared "major.minor" prefix plus a per-weight third segment, e.g. "15.7.1"/"15.7.2"/"15.7.3") still gets its own page and its own sidebar entry. Adult protocols are listed in protocol-number order; Peds protocols are listed alphabetically by name within each category.
 - Protocols flagged `"excluded": true` in the overrides file are left out of the book entirely — the same one-line edit as setting a `"title"` override, both in `protocol-overrides.json`; see [Label and override files](#label-and-override-files) above.
 - Printing (browser print / print-to-PDF) hides the sidebar and expands the protocol card to the full page width.
 
@@ -308,11 +333,11 @@ sudo dpkg-reconfigure ca-certificates-java
 
 then re-run `./gradlew`.
 
-On **Windows** (typically a hospital/corporate network that inspects HTTPS traffic), Java doesn't trust the network's inspection certificate even though Windows and your browser do. The helper `.bat` scripts already handle this by telling Java to use the Windows certificate store (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`). If you call `gradlew.bat` directly, do the same:
+On **Windows** (typically a hospital/corporate network that inspects HTTPS traffic), Java doesn't trust the network's inspection certificate even though Windows and your browser do. The helper `.bat` scripts already handle this by telling Java to use the Windows certificate store (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`). To make plain `gradlew.bat` (tests, VS Code, etc.) work too, add it once to your personal Gradle settings (local to your PC, not committed), then stop any old daemons:
 
 ```bat
-set GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT
-gradlew.bat -Djavax.net.ssl.trustStoreType=Windows-ROOT run --args="..."
+(echo systemProp.javax.net.ssl.trustStoreType=Windows-ROOT& echo org.gradle.jvmargs=-Xmx512m -Djavax.net.ssl.trustStoreType=Windows-ROOT)>> "%USERPROFILE%\.gradle\gradle.properties"
+gradlew.bat --stop
 ```
 
 If it still fails, ask IT for the network's root certificate and import it into the JDK's `cacerts` with `keytool -importcert`.

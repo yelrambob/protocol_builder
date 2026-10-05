@@ -207,6 +207,7 @@ public class UIRxProtocolParser {
         a.setPitch(vals.remove("pitch"));
         a.setRotationTime(vals.remove("rotationTime"));
         a.setDetector(vals.remove("macroRowNumber"));
+        a.setScanDelay(vals.remove("groupDelay"));
         a.setFieldOfView(vals.remove("scanFieldOfViewType"));
         group.getDose().setCtdi(ParseSupport.decimal(vals.remove("CTDI"), p, "series[" + si + "].group[" + gi + "] CTDI"));
         group.getDose().setDlp(ParseSupport.decimal(vals.remove("DLP"), p, "series[" + si + "].group[" + gi + "] DLP"));

@@ -19,6 +19,8 @@ import com.protocolbook.overrides.ProtocolOverrides;
 import com.protocolbook.parser.GEWorkbookParser;
 import com.protocolbook.parser.ProtocolFolderWalker;
 import com.protocolbook.parser.ProtocolParser;
+import com.protocolbook.reference.ReferenceSheets;
+import com.protocolbook.reference.ScanRangeMatcher;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,6 +39,7 @@ import java.util.TreeSet;
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
  *             [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
+ *             [--reference-workbook <file>]... [--reference-folder <dir>]
  *             [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
  * <input> is a Protocols.xlsm workbook or a folder to walk for GE protocol exports.
  * --overrides defaults to ./protocol-overrides.json, --kernel-labels to ./kernel-labels.json,
@@ -58,11 +61,20 @@ import java.util.TreeSet;
  * through --json/--html/--peds-weights identically to scanner-discovered ones.
  * --protocol-images-base points at wherever per-protocol reference images are hosted, named
  * "<protocolNumber>.<ext>" - no list to maintain, see ProtocolImages.
+ * --reference-workbook (repeatable) adds one of the site's own one-sheet-per-protocol reference
+ * workbooks to take scan ranges from (see ReferenceSheets/ScanRangeMatcher); every workbook in
+ * --reference-folder (default ./reference workbooks, only if present) is used too.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
 public class Main {
     public static void main(String[] args) {
+        // Apache POI logs through Log4j, which with no backend falls back to printing ERROR-level
+        // stack traces to the console - e.g. one per broken hyperlink in a reference workbook. Those
+        // are recovered from and say nothing actionable, so keep them off the console.
+        System.setProperty("org.apache.logging.log4j.simplelog.level", "OFF");
+        System.setProperty("log4j2.statusLoggerLevel", "OFF");
+        System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
         try {
             File input = null;
             File jsonDir = null, htmlFile = null, pedsWeightFile = null;
@@ -77,6 +89,8 @@ public class Main {
             File referenceLibraryFile = new File("reference-library.json");
             File manualProtocolsFile = new File("manual-protocols.json");
             String protocolImagesBase = null, protocolImagesExt = "png";
+            List<File> referenceWorkbooks = new ArrayList<File>();
+            File referenceFolder = new File("reference workbooks");
             boolean initOverrides = false, initKernelLabels = false, initPlaneLabels = false, initCategoryLabels = false;
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
@@ -92,6 +106,8 @@ public class Main {
                 else if ("--pdf-library".equals(args[i])) pdfLibraryFile = new File(args[++i]);
                 else if ("--reference-library".equals(args[i])) referenceLibraryFile = new File(args[++i]);
                 else if ("--manual-protocols".equals(args[i])) manualProtocolsFile = new File(args[++i]);
+                else if ("--reference-workbook".equals(args[i])) referenceWorkbooks.add(new File(args[++i]));
+                else if ("--reference-folder".equals(args[i])) referenceFolder = new File(args[++i]);
                 else if ("--protocol-images-base".equals(args[i])) protocolImagesBase = args[++i];
                 else if ("--protocol-images-ext".equals(args[i])) protocolImagesExt = args[++i];
                 else if ("--init-overrides".equals(args[i])) initOverrides = true;
@@ -116,6 +132,12 @@ public class Main {
             if (!manualProtocols.isEmpty()) {
                 protocols = ManualProtocols.merge(protocols, manualProtocols);
                 System.out.println("Added " + manualProtocols.size() + " manual protocol(s) from " + manualProtocolsFile.getAbsolutePath());
+            }
+            referenceWorkbooks.addAll(ReferenceSheets.workbooksIn(referenceFolder));
+            if (!referenceWorkbooks.isEmpty()) {
+                for (File f : referenceWorkbooks) System.out.println("Reading scan ranges from " + f.getAbsolutePath());
+                ScanRangeMatcher matcher = new ScanRangeMatcher(ReferenceSheets.load(referenceWorkbooks));
+                for (String line : matcher.apply(protocols, ProtocolOverrides.load(overridesFile))) System.out.println(line);
             }
             for (Protocol p : protocols) {
                 String name = p.getMetadata() == null ? "(unnamed)" : p.getMetadata().getName();

@@ -62,9 +62,15 @@ public class ProtocolBookHtmlWriter {
                     .computeIfAbsent(prefix, k -> new ArrayList<Protocol>())
                     .add(p);
         }
-        for (Map<Integer, List<Protocol>> byGroup : tree.values())
-            for (List<Protocol> group : byGroup.values())
-                group.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
+        // Adult follows the console's own numbering; Peds is alphabetical by the name shown, which
+        // is easier to scan when many peds protocols differ only by weight/age band.
+        for (Map.Entry<String, Map<Integer, List<Protocol>>> bucket : tree.entrySet())
+            for (List<Protocol> group : bucket.getValue().values()) {
+                if ("Peds".equals(bucket.getKey()))
+                    group.sort(Comparator.comparing((Protocol p) -> String.valueOf(displayName(p, overrides)), String.CASE_INSENSITIVE_ORDER)
+                            .thenComparing((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b))));
+                else group.sort((a, b) -> ProtocolNumbers.compare(protocolNumber(a), protocolNumber(b)));
+            }
 
         List<String> buckets = new ArrayList<String>(tree.keySet());
         buckets.sort(Comparator.comparingInt(this::bucketRank).thenComparing(Comparator.naturalOrder()));
@@ -151,17 +157,9 @@ public class ProtocolBookHtmlWriter {
         return total;
     }
 
-    // Primarily by protocol number shape (peds numbers carry an extra dot-separated segment,
-    // e.g. "9.1.2" vs adult's "9.1" - see ProtocolNumbers), falling back to the free-text patient
-    // type for protocols that don't follow that convention (e.g. hand-authored manual protocols).
+    // See ProtocolNumbers.isPediatricProtocol(Protocol) - shared with the reference-workbook scan range matching.
     private String patientBucket(Protocol p) {
-        Metadata m = p.getMetadata();
-        if (ProtocolNumbers.isPediatric(m == null ? null : m.getProtocolNumber())) return "Peds";
-        String type = m == null ? null : m.getPatientType();
-        if (type == null) return "Adult";
-        String t = type.toLowerCase(Locale.ROOT);
-        boolean pediatric = t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
-        return pediatric ? "Peds" : "Adult";
+        return ProtocolNumbers.isPediatricProtocol(p) ? "Peds" : "Adult";
     }
 
     private int bucketRank(String bucket) {
@@ -224,6 +222,13 @@ public class ProtocolBookHtmlWriter {
         html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
+        String scanRange = p.getPatientSetup() == null ? null : p.getPatientSetup().getScanRange();
+        if (scanRange != null && !scanRange.trim().isEmpty()) {
+            // one line per phase when the phases differ (see ReferenceSheets.Sheet#lines)
+            html.append("<p class=\"scan-range\"><strong>Scan range:</strong> ")
+                    .append(HtmlSupport.esc(scanRange.trim()).replace("\n", "<br>\n")).append("</p>\n");
+        }
+
         ProtocolOverride override = overrides.get(number);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
             html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(HtmlSupport.esc(override.getNotes())).append("</div>\n");
@@ -233,8 +238,8 @@ public class ProtocolBookHtmlWriter {
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
-            html.append("<p class=\"dose\">Exam CTDIvol: ").append(HtmlSupport.esc(p.getDose().getCtdi())).append(" mGy &middot; DLP: ")
-                    .append(HtmlSupport.esc(p.getDose().getDlp())).append(" mGy&middot;cm</p>\n");
+            html.append("<p class=\"dose\">Max exam CTDIvol: ").append(HtmlSupport.esc(dose(maxExamDose(p, true)))).append(" mGy &middot; Max DLP: ")
+                    .append(HtmlSupport.esc(dose(maxExamDose(p, false)))).append(" mGy&middot;cm (at max mA)</p>\n");
         }
 
         for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
@@ -261,6 +266,7 @@ public class ProtocolBookHtmlWriter {
             if (rate != null) html.append(" @ ").append(HtmlSupport.esc(rate)).append(" mL/s");
             html.append("</p>\n");
         }
+        if (!scout) appendContrastTiming(html, s);
         if (scout) appendScoutTable(html, s, labels);
         else for (Group g : s.getGroups()) appendGroup(html, g, labels);
         html.append("</div>\n");
@@ -284,18 +290,20 @@ public class ProtocolBookHtmlWriter {
 
     private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
         Acquisition a = g.getAcquisition();
-        // milliAmpsMode is a mode code, not a flag - "0" means SmartmA/auto-mA is off (a fixed-dose
-        // group can still carry populated min/max fields the console records regardless), and any
-        // other value means some auto-mA mode is active. Merely checking non-null misread "0" as on.
-        boolean autoMa = a.getMaMode() != null && !"0".equals(a.getMaMode()) && a.getMinMa() != null && a.getMaxMa() != null;
+        boolean autoMa = a.isAutoMa();
         html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
                 .append(autoMa ? HtmlSupport.esc(a.getMinMa()) + "-" + HtmlSupport.esc(a.getMaxMa()) : HtmlSupport.esc(a.getMa())).append(" mA");
         // Noise Index only means anything under SmartmA/auto-mA - a fixed mA group's noiseIndex
         // field can be a stale leftover value, so don't show it when mA isn't actually automatic.
         if (autoMa && a.getNoiseIndex() != null) html.append(" (NI ").append(HtmlSupport.esc(a.getNoiseIndex())).append(")");
-        if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
+        Double pitch = a.pitchRatio();
+        if (pitch != null) html.append(" &middot; pitch ").append(String.format(Locale.ROOT, "%.3f", pitch)).append(":1");
+        else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
-        if (g.getDose() != null && g.getDose().getCtdi() != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(g.getDose().getCtdi())).append(" mGy");
+        if (g.maxCtdi() != null) {
+            html.append(" &middot; ").append(autoMa ? "Max CTDIvol " : "CTDIvol ").append(HtmlSupport.esc(dose(g.maxCtdi()))).append(" mGy");
+            if (autoMa) html.append(" (at ").append(HtmlSupport.esc(a.getMaxMa())).append(" mA)");
+        }
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
@@ -304,6 +312,42 @@ public class ProtocolBookHtmlWriter {
                     .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig()))).append("</td></tr>\n");
         }
         html.append("</table>\n");
+    }
+
+    // "Protocol with contrast - 70 sec contrast delay": the delay is the first diagnostic group's
+    // groupDelay, i.e. seconds from the start of the series (the injection) to the scan.
+    private void appendContrastTiming(StringBuilder html, Series s) {
+        boolean contrast = s.getContrast() != null && s.getContrast().isIv();
+        String delay = null;
+        for (Group g : s.getGroups()) {
+            String d = g.getAcquisition().getScanDelay();
+            if (d != null && !d.trim().isEmpty()) { delay = d.trim(); break; }
+        }
+        Double seconds = null;
+        try { if (delay != null) seconds = Double.valueOf(delay); } catch (NumberFormatException ignored) {}
+        html.append("<p class=\"contrast\">").append(contrast ? "Protocol with contrast" : "Protocol without contrast");
+        if (seconds != null && seconds > 0) {
+            html.append(" &middot; ").append(HtmlSupport.esc(seconds % 1 == 0 ? String.valueOf(seconds.longValue()) : String.valueOf(seconds)))
+                    .append(" sec ").append(contrast ? "contrast delay" : "scan delay");
+        }
+        html.append("</p>\n");
+    }
+
+    // The exported exam totals are calculated at each group's milliAmps value; swap each group's
+    // share for its max-mA figure (see Group#maxMaDoseFactor) so the total is the worst case too.
+    private Double maxExamDose(Protocol p, boolean ctdi) {
+        Double total = ctdi ? p.getDose().getCtdi() : p.getDose().getDlp();
+        if (total == null) return null;
+        for (Series s : p.getSeries())
+            for (Group g : s.getGroups()) {
+                Double stored = ctdi ? g.getDose().getCtdi() : g.getDose().getDlp();
+                if (stored != null) total += stored * (g.maxMaDoseFactor() - 1);
+            }
+        return total;
+    }
+
+    private static String dose(Double v) {
+        return v == null ? null : String.format(Locale.ROOT, "%.2f", v);
     }
 
     private boolean isExcluded(Protocol p, Map<String, ProtocolOverride> overrides) {
@@ -387,6 +431,7 @@ public class ProtocolBookHtmlWriter {
             "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
             ".meta,.dose,.destination{color:#555;font-size:.9rem;}" +
+            ".scan-range{margin:.4rem 0;}" +
             ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
             ".series{margin:1rem 0 1rem 1rem;padding-left:1rem;border-left:3px solid #dbe7f3;}" +
             "table{border-collapse:collapse;width:100%;margin:.4rem 0 1rem;}" +
