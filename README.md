@@ -308,11 +308,11 @@ sudo dpkg-reconfigure ca-certificates-java
 
 then re-run `./gradlew`.
 
-On **Windows** (typically a hospital/corporate network that inspects HTTPS traffic), Java doesn't trust the network's inspection certificate even though Windows and your browser do. The helper `.bat` scripts already handle this by telling Java to use the Windows certificate store (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`). If you call `gradlew.bat` directly, do the same:
+On **Windows** (typically a hospital/corporate network that inspects HTTPS traffic), Java doesn't trust the network's inspection certificate even though Windows and your browser do. The helper `.bat` scripts already handle this by telling Java to use the Windows certificate store (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`). To make plain `gradlew.bat` (tests, VS Code, etc.) work too, add it once to your personal Gradle settings (local to your PC, not committed), then stop any old daemons:
 
 ```bat
-set GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT
-gradlew.bat -Djavax.net.ssl.trustStoreType=Windows-ROOT run --args="..."
+(echo systemProp.javax.net.ssl.trustStoreType=Windows-ROOT& echo org.gradle.jvmargs=-Xmx512m -Djavax.net.ssl.trustStoreType=Windows-ROOT)>> "%USERPROFILE%\.gradle\gradle.properties"
+gradlew.bat --stop
 ```
 
 If it still fails, ask IT for the network's root certificate and import it into the JDK's `cacerts` with `keytool -importcert`.
