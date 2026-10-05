@@ -60,10 +60,11 @@ public class UIRxProtocolParser {
         m.setLastUpdated(json.optString("lastUpdatedDateTime", null));
     }
 
-    /** Per series[i].group[j].recon[k]: the friendly display name, and any reformatted views (coronal/sagittal/etc.)
-     *  derived from it. Both only exist in session.xml - UIRx.xml has neither. */
+    /** Per series[i].group[j].recon[k]: the friendly display name, auto-send hosts, and any reformatted views
+     *  (coronal/sagittal/etc.) derived from it. All only exist in session.xml - UIRx.xml has none of them. */
     private static final class ReconSessionInfo {
         final Map<String, String> names = new HashMap<String, String>();
+        final Map<String, List<String>> destinations = new HashMap<String, List<String>>();
         final Map<String, List<Reconstruction>> reformats = new HashMap<String, List<Reconstruction>>();
     }
 
@@ -82,6 +83,7 @@ public class UIRxProtocolParser {
             if (!matcher.find()) continue;
             String key = matcher.group(1) + "." + matcher.group(2) + "." + matcher.group(3);
             if (description != null && !description.isEmpty()) info.names.put(key, description);
+            info.destinations.put(key, sendDestinations(task));
 
             List<Reconstruction> reformats = new ArrayList<Reconstruction>();
             for (Element child : children(task, "task")) {
@@ -117,7 +119,26 @@ public class UIRxProtocolParser {
         rec.setWindowLevel(vals.remove("windowLevel"));
         rec.setWindowWidth(vals.remove("windowWidth"));
         rec.setMatrix(vals.remove("matrixSize"));
+        rec.getSendDestinations().addAll(sendDestinations(reformatTask));
         return rec;
+    }
+
+    // A recon/reformat task's own AutoJobTask lists where its images are auto-sent, one CTJobHost per
+    // destination, named by the host (e.g. "AHSPACS"). Hosts prefixed DOSESC#/DOSESR# carry the dose
+    // report, not the images, so they're left out. Only direct children: a recon's nested reformat
+    // tasks have AutoJobTasks of their own.
+    private List<String> sendDestinations(Element task) {
+        List<String> out = new ArrayList<String>();
+        for (Element child : children(task, "task")) {
+            if (!child.getAttribute("type").contains("CTAutoTask")) continue;
+            for (Element data : children(child, "data")) {
+                if (!data.getAttribute("type").contains("CTJobHost")) continue;
+                String host = data.getAttribute("name");
+                if (host.isEmpty() || host.startsWith("DOSESC#") || host.startsWith("DOSESR#") || out.contains(host)) continue;
+                out.add(host);
+            }
+        }
+        return out;
     }
 
     private String derivePlane(String name) {
@@ -217,6 +238,8 @@ public class UIRxProtocolParser {
         for (int ri = 0; ri < reconEls.size(); ri++) {
             String key = si + "." + gi + "." + ri;
             Reconstruction rec = parseRecon(reconEls.get(ri), plane, sessionInfo.names.get(key), p, si, gi, ri);
+            List<String> destinations = sessionInfo.destinations.get(key);
+            if (destinations != null) rec.getSendDestinations().addAll(destinations);
             group.getReconstructions().add(rec);
             List<Reconstruction> reformats = sessionInfo.reformats.get(key);
             if (reformats != null) {

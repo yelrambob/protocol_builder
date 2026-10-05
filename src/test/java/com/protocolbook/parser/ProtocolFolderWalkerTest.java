@@ -68,6 +68,13 @@ class ProtocolFolderWalkerTest {
         assertTrue(coronal.isDerived());
         assertEquals("Coronal", coronal.getPlane());
 
+        // auto-send hosts come from each recon/reformat task's own AutoJobTask in session.xml; dose-report
+        // hosts (DOSESC#/DOSESR#) aren't image destinations, and a task with no CTJobHost sends nowhere
+        assertEquals(List.of("AHSPACS"), primaryRecon.getSendDestinations());
+        assertTrue(coronal.getSendDestinations().isEmpty(), "this coronal reformat's AutoJobTask has no host");
+        Reconstruction marRecon = group.getReconstructions().stream().filter(r -> "AXIAL KNEE DET MAR 2.5 mm".equals(r.getName())).findFirst().orElseThrow();
+        assertTrue(marRecon.getSendDestinations().isEmpty(), "the MAR recons aren't auto-sent");
+
         assertEquals("100", axial.getContrast().getIvVolume());
         assertTrue(axial.getContrast().isIv());
     }

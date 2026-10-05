@@ -125,6 +125,7 @@ public class ProtocolJsonWriter {
         put(j, "iterativeConfig", r.getIterativeConfig()); put(j, "startLocation", r.getStartLocation());
         put(j, "endLocation", r.getEndLocation()); put(j, "numberOfImages", r.getNumberOfImages());
         j.put("derived", r.isDerived());
+        j.put("sendDestinations", new JSONArray(r.getSendDestinations()));
         return j;
     }
 

@@ -251,6 +251,11 @@ public class ProtocolBookHtmlWriter {
         }
         if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
             html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
+        } else {
+            Set<String> autoSend = new LinkedHashSet<String>();
+            for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) autoSend.addAll(r.getSendDestinations());
+            if (!autoSend.isEmpty())
+                html.append("<p class=\"destination\">Auto-sends to: ").append(HtmlSupport.esc(String.join(", ", autoSend))).append("</p>\n");
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
@@ -318,13 +323,14 @@ public class ProtocolBookHtmlWriter {
         else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
         if (g.ctdi(true) != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(doseRange(g.ctdi(false), g.ctdi(true)))).append(" mGy");
-        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th></tr>\n");
+        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th><th>Auto-send</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getThickness()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel())))
                     .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig())))
-                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r))).append("</td></tr>\n");
+                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r)))
+                    .append("</td><td>").append(HtmlSupport.esc(String.join(", ", r.getSendDestinations()))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
