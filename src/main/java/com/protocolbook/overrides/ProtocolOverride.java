@@ -34,6 +34,7 @@ public class ProtocolOverride {
     private String contrastDelay, examCtdi, examDlp;
     private Map<String, Map<String, String>> recons = new LinkedHashMap<String, Map<String, String>>();
     private Map<String, Map<String, String>> series = new LinkedHashMap<String, Map<String, String>>();
+    private final List<AddedField> addedFields = new ArrayList<AddedField>();
     public String getTitle(){return title;} public void setTitle(String v){title=v;}
     public String getNotes(){return notes;} public void setNotes(String v){notes=v;}
     public boolean isExcluded(){return excluded;} public void setExcluded(boolean v){excluded=v;}
@@ -57,6 +58,32 @@ public class ProtocolOverride {
     public Map<String, Map<String, String>> getRecons(){return recons;}
     /** Series number (as shown in the book, e.g. "2") -> field -> typed value; see {@link #SERIES_FIELDS}. */
     public Map<String, Map<String, String>> getSeries(){return series;}
+
+    /** Fields the scanner has no slot for (e.g. "Oral contrast"), added by hand to the whole exam or to one series. */
+    public List<AddedField> getAddedFields(){return addedFields;}
+
+    /** The added fields for one series number, or for the exam as a whole when seriesNumber is null. */
+    public List<AddedField> addedFieldsFor(Integer seriesNumber) {
+        List<AddedField> out = new ArrayList<AddedField>();
+        for (AddedField f : addedFields) {
+            if (f.isBlank()) continue;
+            if (seriesNumber == null ? f.isExam() : String.valueOf(seriesNumber).equals(f.getSeries())) out.add(f);
+        }
+        return out;
+    }
+
+    /** One hand-added "Title: value" line, shown under the exam header or under one series. */
+    public static class AddedField {
+        private String series, title, value;
+        public AddedField() {}
+        public AddedField(String series, String title, String value) { this.series = series; this.title = title; this.value = value; }
+        /** Series number as shown in the book (e.g. "2"), or null/blank for the whole exam. */
+        public String getSeries(){return series;} public void setSeries(String v){series=v;}
+        public String getTitle(){return title;} public void setTitle(String v){title=v;}
+        public String getValue(){return value;} public void setValue(String v){value=v;}
+        public boolean isExam() { return series == null || series.trim().isEmpty(); }
+        public boolean isBlank() { return (title == null || title.trim().isEmpty()) && (value == null || value.trim().isEmpty()); }
+    }
 
     /** Recon settings that can be typed in per recon, under "recons". */
     public static final List<String> RECON_FIELDS = Arrays.asList("name", "thickness", "interval", "kernel", "asir", "wwwl", "sendTo");
@@ -121,6 +148,9 @@ public class ProtocolOverride {
             for (String field : e.getValue().keySet())
                 if (!SERIES_FIELDS.contains(field)) out.add("series " + e.getKey() + ": unknown field '" + field + "' (use one of " + SERIES_FIELDS + ")");
         }
+        for (AddedField f : addedFields)
+            if (!f.isExam() && !numbers.contains(f.getSeries().trim()))
+                out.add("addedFields '" + f.getTitle() + "': no series " + f.getSeries() + " (this protocol has series " + numbers + ")");
         return out;
     }
 

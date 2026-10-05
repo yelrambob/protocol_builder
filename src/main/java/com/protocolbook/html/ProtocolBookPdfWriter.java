@@ -37,6 +37,14 @@ public class ProtocolBookPdfWriter {
         PDFBOX_LOG.setLevel(Level.SEVERE);
     }
 
+    private BookTheme theme = BookTheme.DEFAULT;
+
+    /** The colors to draw the book in; the default is the original blue and orange. */
+    public ProtocolBookPdfWriter withTheme(BookTheme theme) {
+        this.theme = theme == null ? BookTheme.DEFAULT : theme;
+        return this;
+    }
+
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                       String logoDataUri, String bookTitle, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
@@ -45,7 +53,7 @@ public class ProtocolBookPdfWriter {
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
-        html.append("<style>").append(CSS.replace("@TITLE@", cssString(title))).append("</style>\n</head>\n<body>\n");
+        html.append("<style>").append(css(theme).replace("@TITLE@", cssString(title))).append("</style>\n</head>\n<body>\n");
 
         html.append("<div class=\"cover\">\n");
         if (logoDataUri != null) html.append("<img class=\"cover-logo\" src=\"").append(logoDataUri).append("\" alt=\"logo\">\n");
@@ -80,22 +88,32 @@ public class ProtocolBookPdfWriter {
                 }
         html.append("</body>\n</html>\n");
 
+        render(html.toString(), outFile);
+        return outFile;
+    }
+
+    /** Renders a complete HTML document (CSS 2.1 + paged media only - see the class comment) to a PDF file. */
+    static void render(String html, File outFile) throws IOException {
         if (outFile.getParentFile() != null && !outFile.getParentFile().isDirectory()) outFile.getParentFile().mkdirs();
         try (OutputStream out = new FileOutputStream(outFile)) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
-            builder.withW3cDocument(new W3CDom().fromJsoup(Jsoup.parse(html.toString())), outFile.getAbsoluteFile().getParentFile().toURI().toString());
+            builder.withW3cDocument(new W3CDom().fromJsoup(Jsoup.parse(html)), outFile.getAbsoluteFile().getParentFile().toURI().toString());
             builder.toStream(out);
             builder.run();
         }
-        return outFile;
     }
 
     private static String cssString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
-    private static final String BLUE = "#044281", ORANGE = "#ff8200"; // same as the HTML book's --ahs-blue / --ahs-orange
+    // BLUE/ORANGE/TINT are placeholders for the theme's main, accent and notes-box colors.
+    private static final String BLUE = "@PRIMARY@", ORANGE = "@ACCENT@";
+
+    static String css(BookTheme theme) {
+        return CSS.replace(BLUE, theme.getPrimary()).replace(ORANGE, theme.getAccent()).replace("@TINT@", theme.getAccentTint());
+    }
 
     private static final String CSS =
             "@page{size:letter;margin:.6in .55in .7in;" +
@@ -122,7 +140,7 @@ public class ProtocolBookPdfWriter {
             ".protocol h3{color:" + BLUE + ";font-size:10.5pt;margin:10px 0 3px;}" +
             ".meta,.dose,.destination{color:#555;}" +
             ".scan-range{margin:4px 0;}" +
-            ".notes{background:#fff4e5;border:1px solid " + ORANGE + ";padding:5px 8px;margin:5px 0;}" +
+            ".notes{background:@TINT@;border:1px solid " + ORANGE + ";padding:5px 8px;margin:5px 0;}" +
             ".series{margin:8px 0 8px 6px;padding-left:8px;border-left:3px solid #dbe7f3;page-break-inside:avoid;}" +
             "table{border-collapse:collapse;width:100%;margin:3px 0 8px;}" +
             "th,td{border:1px solid #ccd5df;padding:2px 5px;text-align:left;font-size:8.5pt;}" +
@@ -130,5 +148,6 @@ public class ProtocolBookPdfWriter {
             "tr.reformat td{color:#555;font-style:italic;}" +
             "tr.reformat td:first-child{padding-left:14px;}" +
             ".override{border-bottom:1px dotted #000;font-weight:bold;}" +
-            ".override-note{font-size:7.5pt;color:#555;}";
+            ".override-note{font-size:7.5pt;color:#555;}" +
+            ".added-field{margin:3px 0;}";
 }

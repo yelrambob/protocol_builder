@@ -123,4 +123,56 @@ class ProtocolOverridesTest {
         json.getJSONObject(protocolNumber).put("notes", notes);
         try (java.io.FileWriter w = new java.io.FileWriter(file)) { w.write(json.toString(2)); }
     }
+
+    @Test void saveRoundTripsEverythingAndKeepsWhatItDoesNotKnow(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("protocol-overrides.json").toFile();
+        java.nio.file.Files.write(file.toPath(), ("{ \"9.2\": { \"title\": \"\", \"notes\": \"\", \"excluded\": false, \"mySiteKey\": \"keep me\" },"
+                + " \"9.9\": { \"notes\": \"untouched entry\" } }").getBytes());
+
+        Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(file);
+        ProtocolOverride knee = overrides.get("9.2");
+        knee.setNotes("Pad under the knee.");
+        knee.setContrastRate("3.5");
+        Map<String, String> series2 = new java.util.LinkedHashMap<>();
+        series2.put("kv", "100");
+        series2.put("pitch", "");
+        knee.getSeries().put("2", series2);
+        knee.getAddedFields().add(new ProtocolOverride.AddedField(null, "Oral contrast", "900 mL over 1 hour"));
+        knee.getAddedFields().add(new ProtocolOverride.AddedField("2", "Breath hold", "Inspiration"));
+        knee.getAddedFields().add(new ProtocolOverride.AddedField("2", " ", " "));
+        ProtocolOverride hip = new ProtocolOverride();
+        hip.setExcluded(true);
+        overrides.put("9.4", hip);
+        Map<String, String> names = new java.util.HashMap<>();
+        names.put("9.2", "CT LWR EXT KNEE WITH CONTRAST");
+
+        ProtocolOverrides.save(overrides, names, file);
+
+        String text = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(text.contains("\"mySiteKey\": \"keep me\""), "keys this tool doesn't know about are kept");
+        assertTrue(text.contains("\"title\": \"\""), "a blank field the scaffold had stays as \"\"");
+        assertFalse(text.contains("\"pitch\""), "blank typed values aren't written");
+        assertTrue(text.contains("\"protocolName\": \"CT LWR EXT KNEE WITH CONTRAST\""));
+        assertTrue(new File(file.getPath() + ".bak").isFile(), "previous version kept as .bak");
+
+        Map<String, ProtocolOverride> again = ProtocolOverrides.load(file);
+        assertEquals("Pad under the knee.", again.get("9.2").getNotes());
+        assertEquals("3.5", again.get("9.2").getContrastRate());
+        assertEquals("100", again.get("9.2").seriesField(2, "kv"));
+        assertEquals(2, again.get("9.2").getAddedFields().size(), "the blank added field is dropped");
+        assertEquals("Oral contrast", again.get("9.2").addedFieldsFor(null).get(0).getTitle());
+        assertEquals("Inspiration", again.get("9.2").addedFieldsFor(2).get(0).getValue());
+        assertTrue(again.get("9.4").isExcluded());
+        assertEquals("untouched entry", again.get("9.9").getNotes());
+    }
+
+    @Test void addedFieldOnAMissingSeriesIsFlagged() {
+        ProtocolOverride o = new ProtocolOverride();
+        o.getAddedFields().add(new ProtocolOverride.AddedField("7", "Breath hold", "Inspiration"));
+        com.protocolbook.model.Series series = new com.protocolbook.model.Series();
+        series.setNumber(2);
+        java.util.List<String> problems = o.problems(Arrays.asList(series));
+        assertEquals(1, problems.size());
+        assertTrue(problems.get(0).contains("no series 7"));
+    }
 }
