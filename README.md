@@ -106,7 +106,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
 | `--reference-workbook <file>` | One of your own one-sheet-per-protocol reference workbooks to take scan ranges from (see [Scan ranges](#scan-ranges-from-your-reference-workbooks)). Repeat for more than one. |
 | `--reference-folder <dir>` | Every `.xlsx`/`.xlsm`/`.xls` in this folder is used as a reference workbook too. Defaults to `./reference workbooks`; used only if present. |
-| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed. Never touches existing entries. |
+| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed, label every entry with its scanner protocol name (`protocolName`), and rewrite the file sorted by protocol number. Settings you've already typed are never changed. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
 | `--init-category-labels` | Add an entry to the category-labels file for every distinct protocol-number prefix found that isn't already listed. |
@@ -131,25 +131,31 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 
 ```json
 {
-  "9.2":  { "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
+  "9.2":  { "protocolName": "CT LWR EXT KNEE WITH CONTRAST", "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
   "9.4":  { "excluded": true },
   "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
   "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
   "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" },
   "8.6":  { "referenceSheet": "CT Routine Abd-Pel" },
-  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" }
+  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" },
+  "1.5":  { "reconSendDestinations": { "AXIAL CTA HEAD": "AHSPACS, RAPID 1", "CTP MAPS": "RAPID 1" } }
 }
 ```
 
 - `title` — overrides how the protocol displays in the HTML book (sidebar link and page header) without changing its underlying scanner name, which still flows through unchanged everywhere else (console summary, `--json`). Leave blank/omit to keep the scanner name.
 - `notes` — free-text scanning/study notes, shown in a highlighted "Scanning notes" box near the top of the protocol's page in the HTML book and PDF.
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
-- `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
+- `sendDestination` — where images from this protocol are routed, typed by hand. Optional: without it, the book shows an "Auto-sends to:" line built from the auto-send hosts in the export (see below). Set it when you want to word the destination yourself or list a destination the scanner doesn't auto-send to.
+
+**Auto-send hosts** are read straight from the export: in `session.xml`, each recon and reformat has an `AutoJobTask` naming one `CTJobHost` per destination (e.g. `AHSPACS`, `RAPID 1`). They show per recon in the book's "Auto-send" column and as `sendDestinations` in the JSON. A blank cell means that recon isn't auto-sent (e.g. "by request only" MAR recons). Dose-report hosts (`DOSESC#...`/`DOSESR#...`) are left out.
+- `threeD` — controls the **3D MIP** and **3D VR** series added at the bottom of a protocol's page, each listing a 10° rotation and a separate 10° tumble. They appear automatically for any protocol that sends to AW Server: any auto-send host (including ones typed in `reconSendDestinations`) or `sendDestination` text with "AW" at the start of a word, e.g. `AW`, `AWSERVER`, `AW_SERVER1`, `AW Server`. Set `"threeD": true` to add them to a protocol that doesn't match, or `"threeD": false` to leave them off one that does.
+- `protocolName` — filled in by `--init-overrides` with the protocol's name on the scanner, so you can find a protocol in this file by searching for its name (Ctrl+F) instead of knowing its number. It's only a label: it's refreshed on every `--init-overrides` run and never read back, so editing it does nothing. Use `title` to rename a protocol in the book.
+- `reconSendDestinations` — corrects the auto-send hosts for individual recons when the export lists fewer than the scanner really sends to (e.g. a stroke CTA that also goes to `RAPID 1`). Key each recon by its name as shown in the book (case and extra spaces don't matter) and list **every** host, comma-separated: the typed list replaces what the export says for that recon. Recons you don't name keep the exported hosts, and the "Auto-sends to:" header line includes the typed hosts. A name that matches no recon in that protocol prints a `WARN:` line when the book is built, so typos don't slip by. `--init-overrides` never removes these entries.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
 - `referenceSheet` — the reference-workbook sheet to take this protocol's scan range from, when matching by name picks the wrong one or none (exact sheet name, case-insensitive).
 - `scanRange` — type the scan range in directly; wins over any reference workbook.
 
-`--init-overrides` scaffolds every protocol number here with all eight fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all eight fields blank and its `protocolName`, in protocol-number order, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 
@@ -159,7 +165,7 @@ Each is a flat `{ "code": "label" }` map:
 { "8": "STD", "4": "DTL", "12": "BN+" }
 ```
 
-- **`kernel-labels.json`** maps each recon kernel number to its scanner-console name (e.g. `"STD"`, `"DTL"`, `"BN"`, `"BN+"`). There is no default — every code starts blank until you fill it in.
+- **`kernel-labels.json`** maps each recon kernel number to its scanner-console name. The repo ships with this site's codes: `4` Head, `8` Detail, `128` Lung, `16384` Bone+. GE stores the kernel as a bit flag (one power of two per kernel), which is why the numbers jump. Run `init-kernel-labels` to add a blank entry for any new code your exports use.
 - **`plane-labels.json`** maps scout plane angles to names. It only needs entries for angles you want to *override* — `0`/`90`/`180`/`270` already default to AP/Lateral/PA/Lateral built into the tool; leave a code out (or blank) to keep that default.
 - **`category-labels.json`** maps a protocol number's whole-number prefix (as a string, e.g. `"9"`) to the reading category it sorts under in the sidebar. It only needs entries for prefixes you want to *override* — the tool already defaults to the scanner console's own numbering: `1` Head, `2` Face, `3` Neck, `4` Upper Ext., `5` Chest, `6` ABD/PEL, `7` Spine, `8` Pelvis, `9` Lower Ext., and the same nine body parts again at `11`-`19` for their pediatric counterparts (pediatric prefix = adult prefix + 10, e.g. `15` is pediatric Chest). **A prefix with no mapping at all (nothing in this file and no built-in default — in particular `10`/`20`, GE's QA/phantom protocols) is left out of the generated book entirely, not dumped into a catch-all.** If you need a prefix beyond 1-9/11-19 included, add it here with the label you want.
 - Any kernel/plane code with a missing or empty label falls back to showing the raw code in the HTML book, so nothing there is ever silently hidden — category prefixes are the one exception, by design (see above).

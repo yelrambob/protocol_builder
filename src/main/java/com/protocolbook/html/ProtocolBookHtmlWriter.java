@@ -251,6 +251,11 @@ public class ProtocolBookHtmlWriter {
         }
         if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
             html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
+        } else {
+            Set<String> autoSend = new LinkedHashSet<String>();
+            for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) autoSend.addAll(sendDestinations(r, override));
+            if (!autoSend.isEmpty())
+                html.append("<p class=\"destination\">Auto-sends to: ").append(HtmlSupport.esc(String.join(", ", autoSend))).append("</p>\n");
         }
 
         if (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null)) {
@@ -260,6 +265,10 @@ public class ProtocolBookHtmlWriter {
         }
 
         for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
+        if (needsThreeD(p, override)) {
+            appendThreeDSeries(html, "3D MIP");
+            appendThreeDSeries(html, "3D VR");
+        }
 
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(HtmlSupport.esc(String.join("; ", p.getNotes()))).append("</p>\n");
@@ -272,21 +281,35 @@ public class ProtocolBookHtmlWriter {
                 .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
-        // contrastVolume/contrastRate overrides let a person correct what's shown here without
-        // needing to touch the underlying scanner export.
-        if (!scout && s.getContrast() != null && s.getContrast().isIv()) {
-            String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
-                    ? override.getContrastVolume() : s.getContrast().getIvVolume();
-            String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
-                    ? override.getContrastRate() : s.getContrast().getFlowRate();
-            html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(volume)).append(" mL");
-            if (rate != null) html.append(" @ ").append(HtmlSupport.esc(rate)).append(" mL/s");
-            html.append("</p>\n");
-        }
-        if (!scout) appendContrastTiming(html, s);
+        if (!scout) appendContrast(html, s, override);
         if (scout) appendScoutTable(html, s, labels);
-        else for (Group g : s.getGroups()) appendGroup(html, g, labels);
+        else for (Group g : s.getGroups()) appendGroup(html, g, labels, override);
         html.append("</div>\n");
+    }
+
+    // AW Server host names vary by site ("AW", "AWSERVER", "AW_SERVER1", ...) - any host with "AW" at the start
+    // of a word counts, without matching hosts that merely contain those letters (e.g. "DRAWER").
+    private static final java.util.regex.Pattern AW_HOST = java.util.regex.Pattern.compile("(?i)(^|[^A-Z])AW");
+
+    // Protocols that go to AW Server get the 3D MIP and 3D VR series built there. A "threeD" override
+    // forces them on or off; otherwise it's decided from the auto-send hosts (per-recon overrides
+    // included) and the hand-typed sendDestination.
+    static boolean needsThreeD(Protocol p, ProtocolOverride override) {
+        if (override != null && override.getThreeD() != null) return override.getThreeD();
+        if (override != null && override.getSendDestination() != null && AW_HOST.matcher(override.getSendDestination()).find()) return true;
+        for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions())
+            for (String host : sendDestinations(r, override)) if (AW_HOST.matcher(host).find()) return true;
+        return false;
+    }
+
+    // Rotation (spinning around the patient's long axis) and tumble (head-over-feet) are separate
+    // image sets, so each gets its own row.
+    private void appendThreeDSeries(StringBuilder html, String name) {
+        html.append("<div class=\"series three-d\"><h3>").append(HtmlSupport.esc(name)).append("</h3>\n")
+                .append("<table class=\"recons\">\n<tr><th>Recon</th><th>Increment</th></tr>\n")
+                .append("<tr><td>").append(HtmlSupport.esc(name)).append(" rotation</td><td>10&deg;</td></tr>\n")
+                .append("<tr><td>").append(HtmlSupport.esc(name)).append(" tumble</td><td>10&deg;</td></tr>\n")
+                .append("</table>\n</div>\n");
     }
 
     private boolean isScout(Series s) {
@@ -305,7 +328,11 @@ public class ProtocolBookHtmlWriter {
         html.append("</table>\n");
     }
 
-    private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
+    private static List<String> sendDestinations(Reconstruction r, ProtocolOverride override) {
+        return override != null ? override.sendDestinationsFor(r) : r.getSendDestinations();
+    }
+
+    private void appendGroup(StringBuilder html, Group g, LabelConfig labels, ProtocolOverride override) {
         Acquisition a = g.getAcquisition();
         boolean autoMa = a.isAutoMa();
         html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
@@ -318,13 +345,14 @@ public class ProtocolBookHtmlWriter {
         else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
         if (g.ctdi(true) != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(doseRange(g.ctdi(false), g.ctdi(true)))).append(" mGy");
-        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th></tr>\n");
+        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th><th>Auto-send</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getThickness()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel())))
                     .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig())))
-                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r))).append("</td></tr>\n");
+                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r)))
+                    .append("</td><td>").append(HtmlSupport.esc(String.join(", ", sendDestinations(r, override)))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }
@@ -336,9 +364,10 @@ public class ProtocolBookHtmlWriter {
         return (ww != null ? ww : "?") + "/" + (wl != null ? wl : "?");
     }
 
-    // "Protocol with contrast - 70 sec contrast delay": the delay is the first diagnostic group's
-    // groupDelay, i.e. seconds from the start of the series (the injection) to the scan.
-    private void appendContrastTiming(StringBuilder html, Series s) {
+    // Contrast series: a "When ordered with contrast:" block with the dose, injection rate and delay
+    // timing. The delay is the first diagnostic group's groupDelay, i.e. seconds from the start of
+    // the series (the injection) to the scan. Non-contrast series keep a one-line note.
+    private void appendContrast(StringBuilder html, Series s, ProtocolOverride override) {
         boolean contrast = s.getContrast() != null && s.getContrast().isIv();
         String delay = null;
         for (Group g : s.getGroups()) {
@@ -347,11 +376,25 @@ public class ProtocolBookHtmlWriter {
         }
         Double seconds = null;
         try { if (delay != null) seconds = Double.valueOf(delay); } catch (NumberFormatException ignored) {}
-        html.append("<p class=\"contrast\">").append(contrast ? "Protocol with contrast" : "Protocol without contrast");
-        if (seconds != null && seconds > 0) {
-            html.append(" &middot; ").append(HtmlSupport.esc(seconds % 1 == 0 ? String.valueOf(seconds.longValue()) : String.valueOf(seconds)))
-                    .append(" sec ").append(contrast ? "contrast delay" : "scan delay");
+        String delayText = seconds != null && seconds > 0
+                ? (seconds % 1 == 0 ? String.valueOf(seconds.longValue()) : String.valueOf(seconds)) + " sec" : null;
+
+        if (!contrast) {
+            html.append("<p class=\"contrast\">Protocol without contrast");
+            if (delayText != null) html.append(" &middot; ").append(HtmlSupport.esc(delayText)).append(" scan delay");
+            html.append("</p>\n");
+            return;
         }
+        // contrastVolume/contrastRate overrides let a person correct what's shown here without
+        // needing to touch the underlying scanner export.
+        String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
+                ? override.getContrastVolume() : s.getContrast().getIvVolume();
+        String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
+                ? override.getContrastRate() : s.getContrast().getFlowRate();
+        html.append("<p class=\"contrast\"><strong>When ordered with contrast:</strong>");
+        if (volume != null) html.append("<br>\nContrast Dose: ").append(HtmlSupport.esc(volume)).append(" mL");
+        if (rate != null) html.append("<br>\nInjection rate: ").append(HtmlSupport.esc(rate)).append(" mL/s");
+        if (delayText != null) html.append("<br>\nDelay timing: ").append(HtmlSupport.esc(delayText));
         html.append("</p>\n");
     }
 
