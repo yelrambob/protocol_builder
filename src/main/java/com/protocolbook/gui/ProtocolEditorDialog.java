@@ -34,6 +34,8 @@ final class ProtocolEditorDialog extends JDialog {
     private final Session session;
     private final List<Protocol> queue;
     private int index;
+    /** Protocols in the queue that got their scan range boxes applied from another one - Save & next skips them. */
+    private final java.util.Set<Protocol> skip = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Protocol, Boolean>());
     private Editor editor;
 
     private final JPanel body = new JPanel(new BorderLayout());
@@ -54,8 +56,8 @@ final class ProtocolEditorDialog extends JDialog {
             @Override public void windowClosing(java.awt.event.WindowEvent e) { cancel(); }
         });
 
-        previous.addActionListener(e -> { if (saveCurrent()) open(index - 1); });
-        next.addActionListener(e -> { if (saveCurrent()) open(index + 1); });
+        previous.addActionListener(e -> { if (saveCurrent()) open(step(-1)); });
+        next.addActionListener(e -> { if (saveCurrent()) open(step(1)); });
         done.addActionListener(e -> { if (saveCurrent()) dispose(); });
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(e -> cancel());
@@ -85,9 +87,20 @@ final class ProtocolEditorDialog extends JDialog {
         body.add(editor.component(), BorderLayout.CENTER);
         body.revalidate();
         body.repaint();
-        position.setText(queue.size() > 1 ? "Protocol " + (i + 1) + " of " + queue.size() : "");
-        previous.setEnabled(i > 0);
-        next.setEnabled(i < queue.size() - 1);
+        updateNavigation();
+    }
+
+    /** The next (direction 1) or previous (-1) protocol in the queue that isn't skipped, or -1. */
+    private int step(int direction) {
+        for (int i = index + direction; i >= 0 && i < queue.size(); i += direction) if (!skip.contains(queue.get(i))) return i;
+        return -1;
+    }
+
+    private void updateNavigation() {
+        position.setText(queue.size() > 1 ? "Protocol " + (index + 1) + " of " + queue.size()
+                + (skip.isEmpty() ? "" : " (" + skip.size() + " skipped - boxes applied)") : "");
+        previous.setEnabled(step(-1) >= 0);
+        next.setEnabled(step(1) >= 0);
     }
 
     private void cancel() {
@@ -463,6 +476,24 @@ final class ProtocolEditorDialog extends JDialog {
                 pictures.remove(pic);
                 listModel.removeElement(pic);
             });
+            JButton applyOthers = new JButton("Apply to other protocols…");
+            applyOthers.setToolTipText("Copy this picture and its boxes to other protocols in the book");
+            applyOthers.addActionListener(e -> {
+                ProtocolOverride.ScanRangePicture pic = list.getSelectedValue();
+                if (pic == null || pic.getBoxes().isEmpty()) {
+                    JOptionPane.showMessageDialog(ProtocolEditorDialog.this, "Pick a picture and draw its boxes first.");
+                    return;
+                }
+                List<Protocol> done = ApplyBoxesDialog.show(ProtocolEditorDialog.this, session, p, pic);
+                if (done.isEmpty() || !gui.save()) return;
+                int skipped = 0;
+                for (Protocol q : done) if (queue.contains(q) && queue.indexOf(q) != index && skip.add(q)) skipped++;
+                updateNavigation();
+                JOptionPane.showMessageDialog(ProtocolEditorDialog.this, "Applied " + pic.getImage() + " to " + done.size() + " protocol"
+                        + (done.size() == 1 ? "" : "s") + "."
+                        + (skipped == 0 ? "" : "\n" + skipped + " of them " + (skipped == 1 ? "was" : "were")
+                        + " waiting in this editor and will be skipped by Save & next (double-click one on the section screen to edit it)."));
+            });
             JButton color = new JButton("Change color…");
             color.addActionListener(e -> recolor.run());
             JButton delete = new JButton("Delete box");
@@ -473,8 +504,9 @@ final class ProtocolEditorDialog extends JDialog {
             JPanel leftButtons = new JPanel(new GridLayout(0, 1, 0, 4));
             leftButtons.add(add);
             leftButtons.add(remove);
+            leftButtons.add(applyOthers);
             left.add(leftButtons, BorderLayout.SOUTH);
-            left.setPreferredSize(new Dimension(200, 100));
+            left.setPreferredSize(new Dimension(220, 100));
 
             JPanel right = new JPanel(new BorderLayout(0, 6));
             right.add(new JScrollPane(boxTable), BorderLayout.CENTER);
@@ -486,8 +518,9 @@ final class ProtocolEditorDialog extends JDialog {
 
             JPanel panel = new JPanel(new BorderLayout(8, 6));
             panel.setBorder(new EmptyBorder(8, 10, 8, 10));
-            panel.add(Ui.help("Add a picture, then drag on it to draw a box - each new box gets the next color. Drag a box to move it, "
-                    + "drag a corner to resize it, and type a label for it on the right (e.g. Arterial, Venous). Delete removes the selected box. "
+            panel.add(Ui.help("Add a picture, then drag on it to draw a box - each new box gets the next color, and boxes can overlap. "
+                    + "Click a box to select it, then drag it to move or drag a corner to resize; Delete removes it. "
+                    + "Type a label for each box on the right (e.g. Arterial, Venous). "
                     + "The boxes are drawn into the picture in the book."), BorderLayout.NORTH);
             panel.add(left, BorderLayout.WEST);
             panel.add(canvas, BorderLayout.CENTER);

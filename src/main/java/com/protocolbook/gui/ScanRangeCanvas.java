@@ -15,9 +15,9 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * A picture with scan range boxes on it. Drag on an empty part of the picture to draw a new box (each
- * new box takes the next color), drag a box to move it, drag one of its corners to resize it, and press
- * Delete to remove the selected one. Box positions are kept as fractions of the picture's size.
+ * A picture with scan range boxes on it. Drag anywhere to draw a new box (each new box takes the next
+ * color) - also over another box, since scan ranges often overlap. Click a box to select it; then drag it
+ * to move it, drag one of its corners to resize it, or press Delete to remove it. Box positions are kept as fractions of the picture's size.
  */
 final class ScanRangeCanvas extends JComponent {
     private static final int PAD = 10, HANDLE = 9, MIN_DRAG = 4;
@@ -34,6 +34,7 @@ final class ScanRangeCanvas extends JComponent {
     private double anchorX, anchorY, grabX, grabY, startX, startY;
     private Point pressPoint;
     private ProtocolOverride.Box drawing; // the box being drawn right now, if any
+    private ProtocolOverride.Box clicked; // an unselected box pressed on: a click selects it, a drag draws a new box over it
 
     ScanRangeCanvas(Runnable onChange, Consumer<ProtocolOverride.Box> onSelect) {
         this.onChange = onChange;
@@ -127,9 +128,18 @@ final class ScanRangeCanvas extends JComponent {
             return;
         }
         ProtocolOverride.Box hit = boxAt(p);
+        if (hit != null && hit != selected && selected != null && screen(selected, r).contains(p)) hit = selected;
+        clicked = null;
+        if (hit != null && hit != selected) {
+            // not selected yet: a plain click selects it, dragging draws a new (overlapping) box instead
+            clicked = hit;
+            mode = Mode.NEW;
+            anchorX = fx(p, r);
+            anchorY = fy(p, r);
+            return;
+        }
         if (hit != null) {
             mode = Mode.MOVE;
-            select(hit);
             grabX = fx(p, r);
             grabY = fy(p, r);
             startX = hit.getX();
@@ -173,6 +183,13 @@ final class ScanRangeCanvas extends JComponent {
 
     private void release() {
         if (mode == Mode.NONE) return;
+        if (clicked != null && drawing == null) {
+            select(clicked);
+            clicked = null;
+            mode = Mode.NONE;
+            return;
+        }
+        clicked = null;
         // a click that barely moved isn't a box
         if (drawing != null && (drawing.getW() < 0.01 || drawing.getH() < 0.01)) {
             boxes.remove(drawing);
