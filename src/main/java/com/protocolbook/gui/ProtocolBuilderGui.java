@@ -191,8 +191,14 @@ public class ProtocolBuilderGui extends JFrame {
         });
         JMenuItem exit = new JMenuItem("Exit");
         exit.addActionListener(e -> dispose());
+        JMenuItem pictures = new JMenuItem("Scan range pictures\u2026");
+        pictures.addActionListener(e -> {
+            if (session == null) JOptionPane.showMessageDialog(this, "Load the protocols first - the pictures are kept next to the changes file.");
+            else PicturePicker.manage(this, session.file(com.protocolbook.html.ScanRangePictures.FOLDER));
+        });
         file.add(open);
         file.add(save);
+        file.add(pictures);
         file.addSeparator();
         file.add(exit);
         bar.add(file);
