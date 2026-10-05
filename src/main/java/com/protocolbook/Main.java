@@ -1,5 +1,7 @@
 package com.protocolbook;
 
+import com.protocolbook.html.BookTheme;
+import com.protocolbook.html.ChangeReportWriter;
 import com.protocolbook.html.Changelog;
 import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.PediatricWeightSheetWriter;
@@ -27,6 +29,7 @@ import com.protocolbook.reference.ScanRangeMatcher;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -37,7 +40,8 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Usage: Main <input> [--json <dir>] [--html <file>] [--pdf <file>] [--duplicates <file>] [--book-title <text>] [--changelog <file>]
+ * Usage: Main <input> [--json <dir>] [--html <file>] [--pdf <file>] [--changes-pdf <file>] [--duplicates <file>] [--book-title <text>] [--changelog <file>]
+ *             [--primary-color <#hex>] [--accent-color <#hex>]
  *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
@@ -70,6 +74,9 @@ import java.util.TreeSet;
  * --pdf writes the same book as a printable PDF (cover, contents with page numbers, one protocol
  * per page). --duplicates writes a list of protocols with identical settings, or the same name
  * (see DuplicateFinder), with the protocol-overrides.json lines that would hide the extra copies.
+ * --changes-pdf writes a list of every value set by hand in the overrides file next to the scanner's
+ * own (see ChangeReportWriter). --primary-color/--accent-color recolor the book (see BookTheme).
+ * Running with --gui (or the "gui" Gradle task) opens the step-by-step window instead (see ProtocolBuilderGui).
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -81,9 +88,14 @@ public class Main {
         System.setProperty("org.apache.logging.log4j.simplelog.level", "OFF");
         System.setProperty("log4j2.statusLoggerLevel", "OFF");
         System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
+        if (args.length > 0 && "--gui".equals(args[0])) {
+            com.protocolbook.gui.ProtocolBuilderGui.main(new String[0]);
+            return;
+        }
         try {
             File input = null;
-            File jsonDir = null, htmlFile = null, pdfFile = null, duplicatesFile = null, pedsWeightFile = null;
+            File jsonDir = null, htmlFile = null, pdfFile = null, changesPdfFile = null, duplicatesFile = null, pedsWeightFile = null;
+            BookTheme theme = BookTheme.DEFAULT;
             String bookTitle = null;
             File changelogFile = new File("changelog.json");
             File overridesFile = new File("protocol-overrides.json");
@@ -102,6 +114,9 @@ public class Main {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
                 else if ("--pdf".equals(args[i])) pdfFile = new File(args[++i]);
+                else if ("--changes-pdf".equals(args[i])) changesPdfFile = new File(args[++i]);
+                else if ("--primary-color".equals(args[i])) theme = theme.withPrimary(args[++i]);
+                else if ("--accent-color".equals(args[i])) theme = theme.withAccent(args[++i]);
                 else if ("--duplicates".equals(args[i])) duplicatesFile = new File(args[++i]);
                 else if ("--book-title".equals(args[i])) bookTitle = args[++i];
                 else if ("--changelog".equals(args[i])) changelogFile = new File(args[++i]);
@@ -132,21 +147,7 @@ public class Main {
                         + "next to the .bat files and copy the exported protocol folders into it.");
             }
 
-            ProtocolParser parser = input.isDirectory() ? new ProtocolFolderWalker() : new GEWorkbookParser();
-            List<Protocol> protocols = parser.parse(input);
-            System.out.println("Parsed " + protocols.size() + " protocol(s) from " + input.getAbsolutePath());
-
-            List<Protocol> manualProtocols = ManualProtocols.load(manualProtocolsFile);
-            if (!manualProtocols.isEmpty()) {
-                protocols = ManualProtocols.merge(protocols, manualProtocols);
-                System.out.println("Added " + manualProtocols.size() + " manual protocol(s) from " + manualProtocolsFile.getAbsolutePath());
-            }
-            referenceWorkbooks.addAll(ReferenceSheets.workbooksIn(referenceFolder));
-            if (!referenceWorkbooks.isEmpty()) {
-                for (File f : referenceWorkbooks) System.out.println("Reading scan ranges from " + f.getAbsolutePath());
-                ScanRangeMatcher matcher = new ScanRangeMatcher(ReferenceSheets.load(referenceWorkbooks));
-                for (String line : matcher.apply(protocols, ProtocolOverrides.load(overridesFile))) System.out.println(line);
-            }
+            List<Protocol> protocols = loadProtocols(input, manualProtocolsFile, referenceWorkbooks, referenceFolder, overridesFile, System.out);
             for (Protocol p : protocols) {
                 String name = p.getMetadata() == null ? "(unnamed)" : p.getMetadata().getName();
                 System.out.printf("- %s: %d series, %d reconstructions, %d notes, %d advanced fields%n",
@@ -204,7 +205,7 @@ public class Main {
                 List<PdfLibrary.Entry> referenceLibrary = PdfLibrary.load(referenceLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
                 List<Changelog.Entry> changelog = Changelog.load(changelogFile);
-                new ProtocolBookHtmlWriter().write(protocols, overrides, labels, logoDataUri, pdfLibrary, referenceLibrary, protocolImages, bookTitle, changelog, htmlFile);
+                new ProtocolBookHtmlWriter().withTheme(theme).write(protocols, overrides, labels, logoDataUri, pdfLibrary, referenceLibrary, protocolImages, bookTitle, changelog, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
@@ -216,8 +217,13 @@ public class Main {
             if (pdfFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
-                new ProtocolBookPdfWriter().write(protocols, overrides, labels, loadLogoDataUri(logoFile), bookTitle, pdfFile);
+                new ProtocolBookPdfWriter().withTheme(theme).write(protocols, overrides, labels, loadLogoDataUri(logoFile), bookTitle, pdfFile);
                 System.out.println("Wrote printable protocol book to " + pdfFile.getAbsolutePath());
+            }
+            if (changesPdfFile != null) {
+                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
+                new ChangeReportWriter().withTheme(theme).write(protocols, ProtocolOverrides.load(overridesFile), labels, bookTitle, changesPdfFile);
+                System.out.println("Wrote list of manual changes to " + changesPdfFile.getAbsolutePath());
             }
             if (duplicatesFile != null) {
                 DuplicateFinder.Result duplicates = DuplicateFinder.find(protocols);
@@ -231,6 +237,32 @@ public class Main {
         }
     }
 
+    /**
+     * Parses the input (a folder of GE exports or a workbook), adds manual-protocols.json, and fills in
+     * scan ranges from the reference workbooks (those listed plus every one in referenceFolder). Shared
+     * by the command line and the GUI; progress lines go to log.
+     */
+    public static List<Protocol> loadProtocols(File input, File manualProtocolsFile, List<File> referenceWorkbooks, File referenceFolder,
+                                               File overridesFile, PrintStream log) throws Exception {
+        ProtocolParser parser = input.isDirectory() ? new ProtocolFolderWalker() : new GEWorkbookParser();
+        List<Protocol> protocols = parser.parse(input);
+        log.println("Parsed " + protocols.size() + " protocol(s) from " + input.getAbsolutePath());
+
+        List<Protocol> manualProtocols = ManualProtocols.load(manualProtocolsFile);
+        if (!manualProtocols.isEmpty()) {
+            protocols = ManualProtocols.merge(protocols, manualProtocols);
+            log.println("Added " + manualProtocols.size() + " manual protocol(s) from " + manualProtocolsFile.getAbsolutePath());
+        }
+        List<File> workbooks = new ArrayList<File>(referenceWorkbooks);
+        workbooks.addAll(ReferenceSheets.workbooksIn(referenceFolder));
+        if (!workbooks.isEmpty()) {
+            for (File f : workbooks) log.println("Reading scan ranges from " + f.getAbsolutePath());
+            ScanRangeMatcher matcher = new ScanRangeMatcher(ReferenceSheets.load(workbooks));
+            for (String line : matcher.apply(protocols, ProtocolOverrides.load(overridesFile))) log.println(line);
+        }
+        return protocols;
+    }
+
     private static int reconstructionCount(Protocol p) {
         int count = 0;
         for (Series s : p.getSeries()) for (Group g : s.getGroups()) count += g.getReconstructions().size();
@@ -238,7 +270,7 @@ public class Main {
     }
 
     /** Embeds an image as a base64 data URI so the generated book stays a single file. Null if the file isn't there. */
-    private static String loadLogoDataUri(File logoFile) throws IOException {
+    public static String loadLogoDataUri(File logoFile) throws IOException {
         if (!logoFile.isFile()) return null;
         String name = logoFile.getName().toLowerCase(Locale.ROOT);
         String mimeType = name.endsWith(".svg") ? "image/svg+xml"

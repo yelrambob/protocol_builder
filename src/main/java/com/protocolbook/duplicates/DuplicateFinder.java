@@ -24,6 +24,27 @@ public final class DuplicateFinder {
         public final List<List<Protocol>> sameNameDifferent = new ArrayList<List<Protocol>>();
     }
 
+    /**
+     * The copy to keep out of a group of duplicates: the most recently updated (the one someone has been
+     * maintaining), or the lowest-numbered when there are no dates. lastUpdated is an ISO-8601 timestamp
+     * from protocolmetadata.json, so text order is date order.
+     */
+    public static Protocol suggestedKeep(List<Protocol> group) {
+        List<Protocol> sorted = new ArrayList<Protocol>(group);
+        sorted.sort((a, b) -> com.protocolbook.html.ProtocolNumbers.compare(number(a), number(b)));
+        Protocol best = null;
+        for (Protocol p : sorted) {
+            String updated = p.getMetadata() == null ? null : p.getMetadata().getLastUpdated();
+            String bestUpdated = best == null || best.getMetadata() == null ? null : best.getMetadata().getLastUpdated();
+            if (best == null || (updated != null && (bestUpdated == null || updated.compareTo(bestUpdated) > 0))) best = p;
+        }
+        return best;
+    }
+
+    private static String number(Protocol p) {
+        return p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+    }
+
     public static Result find(List<Protocol> protocols) {
         Map<String, List<Protocol>> bySettings = new LinkedHashMap<String, List<Protocol>>();
         Map<String, List<Protocol>> byName = new LinkedHashMap<String, List<Protocol>>();

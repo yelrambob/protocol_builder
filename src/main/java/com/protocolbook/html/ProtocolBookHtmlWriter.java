@@ -40,6 +40,13 @@ import java.util.*;
  */
 public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Peds");
+    private BookTheme theme = BookTheme.DEFAULT;
+
+    /** The colors to draw the book in; the default is the original blue and orange. */
+    public ProtocolBookHtmlWriter withTheme(BookTheme theme) {
+        this.theme = theme == null ? BookTheme.DEFAULT : theme;
+        return this;
+    }
 
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                        String logoDataUri, List<PdfLibrary.Entry> pdfLibrary, List<PdfLibrary.Entry> referenceLibrary,
@@ -61,7 +68,7 @@ public class ProtocolBookHtmlWriter {
 
         StringBuilder html = new StringBuilder();
         html.append("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>").append(HtmlSupport.esc(title)).append("</title>\n");
-        html.append("<style>").append(CSS).append("</style>\n</head>\n<body>\n");
+        html.append("<style>").append(rootCss(theme)).append(CSS).append("</style>\n</head>\n<body>\n");
 
         html.append("<nav class=\"main-menu\">\n");
         if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
@@ -122,7 +129,7 @@ public class ProtocolBookHtmlWriter {
      * Book order, shared with {@link ProtocolBookPdfWriter}: bucket (Adult, then Peds) ->
      * protocol-number prefix (ascending) -> protocols, excluded ones left out.
      */
-    Map<String, Map<Integer, List<Protocol>>> tree(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
+    public Map<String, Map<Integer, List<Protocol>>> tree(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels) {
         // bucket (Adult/Peds) -> protocol-number whole-number prefix -> protocols.
         // A prefix with no category label (see LabelConfig.categoryForNumber) is skipped entirely -
         // that's how 10.x (QA/phantom) protocols stay off the generated book without needing to be
@@ -212,7 +219,7 @@ public class ProtocolBookHtmlWriter {
 
     // A "title" override renames how a protocol displays in the book without touching its
     // underlying scanner name (which still flows through --json/console output unchanged).
-    String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
+    public String displayName(Protocol p, Map<String, ProtocolOverride> overrides) {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         ProtocolOverride override = overrides.get(number);
@@ -238,17 +245,20 @@ public class ProtocolBookHtmlWriter {
         html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
 
-        String scanRange = p.getPatientSetup() == null ? null : p.getPatientSetup().getScanRange();
+        ProtocolOverride override = overrides.get(number);
+        // A typed scanRange wins even without reference workbooks (ScanRangeMatcher only runs when there are some).
+        String scanRange = override != null && blankToNull(override.getScanRange()) != null ? override.getScanRange()
+                : p.getPatientSetup() == null ? null : p.getPatientSetup().getScanRange();
         if (scanRange != null && !scanRange.trim().isEmpty()) {
             // one line per phase when the phases differ (see ReferenceSheets.Sheet#lines)
             html.append("<p class=\"scan-range\"><strong>Scan range:</strong> ")
                     .append(HtmlSupport.esc(scanRange.trim()).replace("\n", "<br>\n")).append("</p>\n");
         }
 
-        ProtocolOverride override = overrides.get(number);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
             html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(HtmlSupport.esc(override.getNotes())).append("</div>\n");
         }
+        if (override != null) appendAddedFields(html, override.addedFieldsFor(null));
         if (override != null && override.getSendDestination() != null && !override.getSendDestination().trim().isEmpty()) {
             html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
         } else {
@@ -261,8 +271,8 @@ public class ProtocolBookHtmlWriter {
         String typedCtdi = override == null ? null : blankToNull(override.getExamCtdi());
         String typedDlp = override == null ? null : blankToNull(override.getExamDlp());
         if (typedCtdi != null || typedDlp != null || (p.getDose() != null && (p.getDose().getCtdi() != null || p.getDose().getDlp() != null))) {
-            String ctdi = p.getDose() == null ? null : doseRange(examDose(p, true, false), examDose(p, true, true));
-            String dlp = p.getDose() == null ? null : doseRange(examDose(p, false, false), examDose(p, false, true));
+            String ctdi = ScannerValues.examCtdi(p);
+            String dlp = ScannerValues.examDlp(p);
             html.append("<p class=\"dose\">Exam CTDIvol: ").append(shown(ctdi, typedCtdi))
                     .append(" mGy &middot; DLP: ").append(shown(dlp, typedDlp))
                     .append(" mGy&middot;cm (min-max mA)</p>\n");
@@ -291,6 +301,7 @@ public class ProtocolBookHtmlWriter {
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
         if (!scout) appendContrast(html, s, override);
+        if (override != null) appendAddedFields(html, override.addedFieldsFor(s.getNumber()));
         if (scout) appendScoutTable(html, s, labels, override);
         else for (Group g : s.getGroups()) appendGroup(html, g, s.getNumber(), labels, override);
         html.append("</div>\n");
@@ -322,7 +333,16 @@ public class ProtocolBookHtmlWriter {
     }
 
     private boolean isScout(Series s) {
-        return s.getScanType() != null && s.getScanType().equalsIgnoreCase("Scout");
+        return ScannerValues.isScout(s);
+    }
+
+    // Hand-added "Title: value" lines (see ProtocolOverride.AddedField) - the exam's under the header, a series' under its name.
+    private void appendAddedFields(StringBuilder html, List<ProtocolOverride.AddedField> fields) {
+        for (ProtocolOverride.AddedField f : fields) {
+            html.append("<p class=\"added-field\">");
+            if (f.getTitle() != null && !f.getTitle().trim().isEmpty()) html.append("<strong>").append(HtmlSupport.esc(f.getTitle().trim())).append(":</strong> ");
+            html.append(HtmlSupport.esc(f.getValue() == null ? "" : f.getValue().trim()).replace("\n", "<br>\n")).append("</p>\n");
+        }
     }
 
     // Scouts are localizer images, not diagnostic reconstructions - one compact table beats a full acquisition block per plane.
@@ -362,7 +382,7 @@ public class ProtocolBookHtmlWriter {
             html.append(" &middot; ").append(shown(a.getRotationTime(), typedRotation)).append(" s rotation");
         String typedCtdi = seriesField(override, seriesNumber, "ctdi");
         if (g.ctdi(true) != null || typedCtdi != null)
-            html.append(" &middot; CTDIvol ").append(shown(g.ctdi(true) == null ? null : doseRange(g.ctdi(false), g.ctdi(true)), typedCtdi)).append(" mGy");
+            html.append(" &middot; CTDIvol ").append(shown(ScannerValues.groupField(g, "ctdi"), typedCtdi)).append(" mGy");
         html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th><th>Auto-send</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(shown(r.getName(), reconField(override, r, "name")))
@@ -370,7 +390,7 @@ public class ProtocolBookHtmlWriter {
                     .append("</td><td>").append(shown(r.getInterval(), reconField(override, r, "interval")))
                     .append("</td><td>").append(shown(labels.kernel(r.getKernel()), reconField(override, r, "kernel")))
                     .append("</td><td>").append(shown(labels.asir(r.getIterativeConfig()), reconField(override, r, "asir")))
-                    .append("</td><td>").append(shown(windowWidthLevel(r), reconField(override, r, "wwwl")))
+                    .append("</td><td>").append(shown(ScannerValues.windowWidthLevel(r), reconField(override, r, "wwwl")))
                     .append("</td><td>").append(shown(String.join(", ", r.getSendDestinations()), reconField(override, r, "sendTo") == null ? null
                             : String.join(", ", sendDestinations(r, override)))).append("</td></tr>\n");
         }
@@ -396,13 +416,6 @@ public class ProtocolBookHtmlWriter {
 
     private static String blankToNull(String v) {
         return v == null || v.trim().isEmpty() ? null : v.trim();
-    }
-
-    // Display window as "width/level" (e.g. "1500/250"), the order it's dialed in at the console.
-    private static String windowWidthLevel(Reconstruction r) {
-        String ww = r.getWindowWidth(), wl = r.getWindowLevel();
-        if (ww == null && wl == null) return null;
-        return (ww != null ? ww : "?") + "/" + (wl != null ? wl : "?");
     }
 
     // Contrast series: a "When ordered with contrast:" block with the dose, injection rate and delay
@@ -440,27 +453,6 @@ public class ProtocolBookHtmlWriter {
         html.append("</p>\n");
     }
 
-    // The exported exam totals are calculated at each group's milliAmps value; swap each group's
-    // share for its min- or max-mA figure (see Group#doseFactor) so the total is a range too.
-    private Double examDose(Protocol p, boolean ctdi, boolean max) {
-        Double total = ctdi ? p.getDose().getCtdi() : p.getDose().getDlp();
-        if (total == null) return null;
-        for (Series s : p.getSeries())
-            for (Group g : s.getGroups()) {
-                Double stored = ctdi ? g.getDose().getCtdi() : g.getDose().getDlp();
-                if (stored != null) total += stored * (g.doseFactor(max) - 1);
-            }
-        return total;
-    }
-
-    // "4.35-61.38", or just "44.58" when min and max are the same (fixed mA).
-    private static String doseRange(Double min, Double max) {
-        if (max == null) return null;
-        String hi = String.format(Locale.ROOT, "%.2f", max);
-        String lo = min == null ? hi : String.format(Locale.ROOT, "%.2f", min);
-        return lo.equals(hi) ? hi : lo + "-" + hi;
-    }
-
     private boolean isExcluded(Protocol p, Map<String, ProtocolOverride> overrides) {
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         ProtocolOverride o = overrides.get(number);
@@ -493,10 +485,14 @@ public class ProtocolBookHtmlWriter {
         html.append("</table>\n</section>\n");
     }
 
-    // Best-effort Atlantic Health System palette (menu orange, main panel blue) - not sourced from an
-    // official brand guide, so swap these hex values if AHS's real brand colors differ.
+    // The palette comes from the BookTheme (default: the original AHS menu orange / main panel blue);
+    // the variable names are kept from when it was fixed - "blue" is the main color, "orange" the accent.
+    static String rootCss(BookTheme theme) {
+        return ":root{--ahs-blue:" + theme.getPrimary() + ";--ahs-blue-accent:" + theme.getPrimary() + ";--ahs-orange:" + theme.getAccent()
+                + ";--ahs-orange-dark:" + theme.getAccentDark() + ";--ahs-tint:" + theme.getAccentTint() + ";}";
+    }
+
     private static final String CSS =
-            ":root{--ahs-blue:#044281;--ahs-blue-accent:#044281;--ahs-orange:#ff8200;--ahs-orange-dark:#cc6900;}" +
             "*{box-sizing:border-box;}" +
             "html,body{margin:0;padding:0;min-height:100%;}" +
             "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:var(--ahs-blue);}" +
@@ -543,7 +539,7 @@ public class ProtocolBookHtmlWriter {
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
             ".meta,.dose,.destination{color:#555;font-size:.9rem;}" +
             ".scan-range{margin:.4rem 0;}" +
-            ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
+            ".notes{background:var(--ahs-tint);border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
             ".series{margin:1rem 0 1rem 1rem;padding-left:1rem;border-left:3px solid #dbe7f3;}" +
             "table{border-collapse:collapse;width:100%;margin:.4rem 0 1rem;}" +
             "th,td{border:1px solid #dde3ea;padding:.4rem .6rem;font-size:.9rem;text-align:left;}" +
@@ -551,6 +547,7 @@ public class ProtocolBookHtmlWriter {
             "table.recons tr.reformat td:first-child{padding-left:1.5rem;color:#555;}" +
             ".override{border-bottom:1px dotted currentColor;font-weight:600;cursor:help;}" +
             ".override-note{font-size:.85rem;color:#555;}" +
+            ".added-field{margin:.3rem 0;}" +
 
             "@media print{.main-menu{display:none;}body{background:#fff;}.main-content{margin-left:0;padding:0;}" +
             "section.protocol-view{box-shadow:none;border-radius:0;max-width:none;}}";

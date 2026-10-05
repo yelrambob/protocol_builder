@@ -37,3 +37,12 @@ java {
 
 tasks.named('test') { useJUnitPlatform() }
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+// The step-by-step window (see ProtocolBuilderGui): ./gradlew gui, or run-gui.bat / run-gui.sh.
+tasks.register('gui', JavaExec) {
+    group = 'application'
+    description = 'Opens the Protocol Builder window.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.protocolbook.gui.ProtocolBuilderGui'
+    workingDir = projectDir
+}

@@ -21,6 +21,20 @@ You don't need to tell the tool which format you're using — point it at a file
 
 No manual dependency installation is needed — Gradle resolves Apache POI (`poi-ooxml`), `org.json`, and JUnit 5 from Maven Central on first run.
 
+## The Protocol Builder window (GUI)
+
+For building or reviewing the book without editing JSON by hand, double-click **`run-gui.bat`** (Windows) or run `./run-gui.sh` / `./gradlew gui` (macOS/Linux). Keep the console window it opens running while you work; closing it closes the window too. It walks through the job one screen at a time:
+
+1. **Choose protocols** — the exported protocols folder (or a `Protocols.xlsm` workbook) and the changes file, `protocol-overrides.json`. Label files, `logo.png`, `changelog.json`, `manual-protocols.json` and the `reference workbooks` folder are read from the changes file's folder, the way the command line reads them from the current directory.
+2. **Leave out protocols** — every protocol with a *Leave out* box, a search box, and a note on duplicates (same settings or same name). *Leave out suggested duplicates* keeps the most recently updated copy of each identical group, the same suggestion as `--duplicates`.
+3. **One screen per section** (Adult — Head, Adult — Chest, ...) — one line per protocol with kV, mA, pitch, contrast volume @ rate, delay, main recon, CTDIvol and notes. Values set by hand show in the accent color. *Worth a look* flags likely problems: a name that says "with contrast" with no IV contrast (or the reverse), a contrast series with no volume or rate, and a kV that differs from the one most of the section uses. Tick *Edit* on the protocols to change and press *Edit checked* (or double-click a row); *Set contrast for checked* applies one volume/rate/delay to several at once. *Section reviewed* ticks the section off in the step list.
+   - The editor has four tabs. **Exam & contrast**: title, contrast volume/rate/delay, sends-to, scan range, exam dose, 3D on/off and scanning notes, with the scanner's value shown next to each box. **Series settings** and **Recons**: grids that start from what the book shows now, where any cell you change is highlighted (hover a cell to see the scanner's value). Clearing a cell, or typing the scanner's value back, removes the change. **Added fields**: information the scanner has no place for. *Add a field* asks what it applies to (Exam or one series), a title (titles used before are offered again) and the value. *Save & next* / *Save & previous* step through the checked protocols.
+4. **Review & create book** — every manual change in one list (scanner value → new value), then the outputs. The **book PDF** and the **list of manual changes (PDF)** are ticked by default; the **HTML book** is optional. Choose the book title, the file name (*Save as*) and the folder. Files come out as `<name>.pdf`, `<name>.html` and `<name> - changes.pdf`.
+
+Every edit is saved to `protocol-overrides.json` straight away (the previous version is kept as `protocol-overrides.json.bak`), so you can stop halfway through and pick up later. It's the same file the command line and the `.bat` scripts use, so either works on the same changes. Changes only affect the book; the scanner keeps its own settings. That's why the changes PDF lists the scanner's value next to each new one: it doubles as the list of what to update at the console.
+
+The **Colors** menu sets the book's two colors: a few ready-made pairs, or *Choose main color* / *Choose accent color* for any color. The window's header bar shows the current pair. The choice, along with the folders, title, file name and output boxes, is remembered for next time.
+
 ## Quick start
 
 macOS/Linux:
@@ -90,6 +104,9 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--json <dir>` | Write one normalized JSON file per protocol into `<dir>` (created if needed). See [JSON output](#json-output) below. |
 | `--html <file>` | Render every parsed protocol as a single self-contained, browsable HTML file at `<file>`. See [HTML protocol book](#html-protocol-book) below. |
 | `--pdf <file>` | The same book as a printable PDF: cover, contents with page numbers, then one protocol per page with the same content and order as the HTML book (minus `--protocol-images-base` images). Close the PDF in your viewer before re-running, or Windows won't let it be overwritten. |
+| `--changes-pdf <file>` | Write a PDF listing every value set by hand in the overrides file, by section and protocol, next to the scanner's own value. Values set this way only change the book, so this is also the list of what to update at the scanner. |
+| `--primary-color <#hex>` / `--accent-color <#hex>` | Recolor the book (HTML, PDF and changes PDF). Main color: page background, headings, table headers (default `#044281`). Accent: sidebar, header underline, notes box (default `#ff8200`). |
+| `--gui` | Open the Protocol Builder window instead (see [The Protocol Builder window](#the-protocol-builder-window-gui)); must be the first argument. |
 | `--duplicates <file>` | Write a list of protocols that are effectively duplicates — identical settings under two numbers, or the same name with different settings (with what differs) — plus the `protocol-overrides.json` lines that would hide the extra copies. See [Duplicate protocols](#duplicate-protocols). |
 | `--book-title <text>` | Sets the browser tab title and the welcome-page heading in the HTML book. Defaults to "Protocol Book". Only takes effect together with `--html`. |
 | `--changelog <file>` | Path to a hand-typed "what changed and why" log, rendered as the book's "Recent Changes" sidebar entry/table (see below). Defaults to `./changelog.json`; used only if present. Only takes effect together with `--html`. |
@@ -163,6 +180,16 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
       "AXIAL KNEE DET 2.5MM": { "kernel": "Bone", "wwwl": "400/40" },
       "CORONAL KNEE DET 2.5MM": { "wwwl": "2000/500", "sendTo": "AHSPACS" }
     }
+  }
+  ```
+- `addedFields` — lines the scanner has no slot for, shown as "**Title:** value": a field without `series` shows under the protocol's header (after the scanning notes), a field with `"series": "2"` shows under that series. The GUI's *Added fields* tab writes these; a series number that isn't in the protocol prints a `WARN:` line.
+
+  ```json
+  "9.2": {
+    "addedFields": [
+      { "title": "Oral contrast", "value": "900 mL over 1 hour" },
+      { "series": "2", "title": "Breath hold", "value": "Inspiration" }
+    ]
   }
   ```
 - `threeD` — controls the **3D MIP** and **3D VR** series added at the bottom of a protocol's page, each listing a 10° rotation and a separate 10° tumble. They appear automatically for any protocol that sends to AW Server: any auto-send host (including ones typed in `reconSendDestinations`) or `sendDestination` text with "AW" at the start of a word, e.g. `AW`, `AWSERVER`, `AW_SERVER1`, `AW Server`. Set `"threeD": true` to add them to a protocol that doesn't match, or `"threeD": false` to leave them off one that does.
@@ -295,6 +322,7 @@ Thin wrappers around the Gradle invocations above, for people who'd rather doubl
 
 | Script | Equivalent to |
 |---|---|
+| `run-gui.sh` / `.bat` | `./gradlew gui` — opens the [Protocol Builder window](#the-protocol-builder-window-gui). |
 | `run-protocol-book.sh` / `.bat` `[input] [overrides-file]` | `--html book.html --pdf book.pdf --overrides <overrides-file>` — the main "generate the book" command. Second argument optionally names an overrides file other than `protocol-overrides.json`. |
 | `init-protocol-overrides.sh` / `.bat` `[input]` | `--init-overrides` |
 | `init-kernel-labels.sh` / `.bat` `[input]` | `--init-kernel-labels` |
@@ -327,13 +355,21 @@ src/main/java/com/protocolbook/
     ProtocolFolderWalker.java     Recursively finds GE export folders and de-dupes by protocol number
     UIRxProtocolParser.java       Parses one export folder's protocolmetadata.json/UIRx.xml/session.xml
     ParseSupport.java             Shared tolerant numeric parsing and "advanced" field bookkeeping
-  overrides/                      ProtocolOverride model + load/mergeTemplate for protocol-overrides.json
+  overrides/                      ProtocolOverride model + load/save/mergeTemplate for protocol-overrides.json
+  changes/ManualChanges.java      Every hand-set value next to the scanner's (GUI review screen, --changes-pdf)
+  gui/                            The Protocol Builder window (Swing): ProtocolBuilderGui (frame, steps, Colors menu),
+                                   SetupPanel, ExcludePanel, SectionPanel + SectionRow (at-a-glance line and checks),
+                                   ProtocolEditorDialog, FinishPanel, Session (loaded data), Prefs (remembered choices)
   labels/                         CodeLabels (generic code->label file) + LabelConfig (kernel/plane/category)
   manual/ManualProtocols.java     Loads/merges hand-authored protocols not present on the scanner
   io/ProtocolJsonWriter.java      --json output
   html/
     ProtocolBookHtmlWriter.java   --html output (AHS-themed click-only-sidebar single-page app)
     HtmlSupport.java              Shared HTML escaping/CSS used by both HTML writers
+    ProtocolBookPdfWriter.java    --pdf output (same content as the HTML book, rendered with openhtmltopdf)
+    ChangeReportWriter.java       --changes-pdf output
+    ScannerValues.java            The scanner's own value for each overridable setting, as the book shows it
+    BookTheme.java                The book's two colors (--primary-color / --accent-color, the GUI's Colors menu)
     PdfLibrary.java                --pdf-library and --reference-library loading (same format, two separate lists)
     Changelog.java                 --changelog loading (hand-typed "Recent Changes" log)
     ProtocolImages.java           --protocol-images-base URL convention

@@ -1,6 +1,7 @@
 package com.protocolbook.overrides;
 
 import com.protocolbook.model.Protocol;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import com.protocolbook.html.ProtocolNumbers;
@@ -90,6 +91,12 @@ public final class ProtocolOverrides {
             readNested(entry.optJSONObject("series"), o.getSeries());
             JSONObject reconSends = entry.optJSONObject("reconSendDestinations");
             if (reconSends != null) for (String recon : reconSends.keySet()) o.getReconSendDestinations().put(recon, reconSends.optString(recon, ""));
+            JSONArray added = entry.optJSONArray("addedFields");
+            if (added != null) for (int i = 0; i < added.length(); i++) {
+                JSONObject f = added.optJSONObject(i);
+                if (f != null) o.getAddedFields().add(new ProtocolOverride.AddedField(
+                        f.optString("series", null), f.optString("title", ""), f.optString("value", "")));
+            }
             out.put(key, o);
         }
         return out;
@@ -121,7 +128,7 @@ public final class ProtocolOverrides {
 
     // Fields in the order they're written, so every entry reads the same top to bottom; any other key follows these.
     private static final List<String> FIELD_ORDER = Arrays.asList("protocolName", "title", "notes", "excluded", "sendDestination",
-            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "contrastDelay", "examCtdi", "examDlp", "series", "recons", "reconSendDestinations", "threeD");
+            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "contrastDelay", "examCtdi", "examDlp", "series", "recons", "reconSendDestinations", "threeD", "addedFields");
 
     /**
      * Adds an empty entry for any protocol number not already present in the file (creating the file
@@ -146,9 +153,82 @@ public final class ProtocolOverrides {
             }
             if (e.getValue() != null) json.getJSONObject(number).put("protocolName", e.getValue());
         }
-        // Keep the previous version as <file>.bak, and write to a temp file that's moved into place, so a
-        // crash or full disk mid-write can never leave a half-written overrides file.
+        write(json, file);
+        return added;
+    }
+
+    /**
+     * Writes every entry in overrides back to the file (what the GUI edits), leaving anything else in
+     * it untouched: entries for other protocol numbers and any key this tool doesn't know about. A
+     * field that's blank is written as "" if the entry already had it (so a --init-overrides scaffold
+     * keeps its shape) and left out otherwise. protocolNames refreshes the "protocolName" label the
+     * same way --init-overrides does. The previous file is kept as &lt;file&gt;.bak.
+     */
+    public static void save(Map<String, ProtocolOverride> overrides, Map<String, String> protocolNames, File file) throws IOException {
+        JSONObject json = file.isFile()
+                ? new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)) : new JSONObject();
+        for (Map.Entry<String, ProtocolOverride> e : overrides.entrySet()) {
+            String number = e.getKey();
+            if (number == null) continue;
+            JSONObject entry = json.optJSONObject(number);
+            if (entry == null) { entry = new JSONObject(); json.put(number, entry); }
+            ProtocolOverride o = e.getValue();
+            String name = protocolNames == null ? null : protocolNames.get(number);
+            if (name != null) entry.put("protocolName", name);
+            putText(entry, "title", o.getTitle());
+            putText(entry, "notes", o.getNotes());
+            if (o.isExcluded() || entry.has("excluded")) entry.put("excluded", o.isExcluded());
+            putText(entry, "sendDestination", o.getSendDestination());
+            putText(entry, "contrastVolume", o.getContrastVolume());
+            putText(entry, "contrastRate", o.getContrastRate());
+            putText(entry, "referenceSheet", o.getReferenceSheet());
+            putText(entry, "scanRange", o.getScanRange());
+            putText(entry, "contrastDelay", o.getContrastDelay());
+            putText(entry, "examCtdi", o.getExamCtdi());
+            putText(entry, "examDlp", o.getExamDlp());
+            if (o.getThreeD() != null) entry.put("threeD", o.getThreeD()); else entry.remove("threeD");
+            putNested(entry, "series", o.getSeries());
+            putNested(entry, "recons", o.getRecons());
+            JSONObject sends = new JSONObject();
+            for (Map.Entry<String, String> s : o.getReconSendDestinations().entrySet())
+                if (s.getValue() != null && !s.getValue().trim().isEmpty()) sends.put(s.getKey(), s.getValue().trim());
+            if (sends.isEmpty()) entry.remove("reconSendDestinations"); else entry.put("reconSendDestinations", sends);
+            JSONArray added = new JSONArray();
+            for (ProtocolOverride.AddedField f : o.getAddedFields()) {
+                if (f.isBlank()) continue;
+                JSONObject field = new JSONObject();
+                if (!f.isExam()) field.put("series", f.getSeries().trim());
+                field.put("title", f.getTitle() == null ? "" : f.getTitle().trim());
+                field.put("value", f.getValue() == null ? "" : f.getValue().trim());
+                added.put(field);
+            }
+            if (added.isEmpty()) entry.remove("addedFields"); else entry.put("addedFields", added);
+        }
+        write(json, file);
+    }
+
+    private static void putText(JSONObject entry, String key, String value) {
+        if (value != null && !value.trim().isEmpty()) entry.put(key, value.trim());
+        else if (entry.has(key)) entry.put(key, "");
+    }
+
+    // Only the non-blank values; a series/recon with nothing typed is left out, and the key itself when nothing is.
+    private static void putNested(JSONObject entry, String key, Map<String, Map<String, String>> values) {
+        JSONObject out = new JSONObject();
+        for (Map.Entry<String, Map<String, String>> e : values.entrySet()) {
+            JSONObject fields = new JSONObject();
+            for (Map.Entry<String, String> f : e.getValue().entrySet())
+                if (f.getValue() != null && !f.getValue().trim().isEmpty()) fields.put(f.getKey(), f.getValue().trim());
+            if (!fields.isEmpty()) out.put(e.getKey(), fields);
+        }
+        if (out.isEmpty()) entry.remove(key); else entry.put(key, out);
+    }
+
+    // Keep the previous version as <file>.bak, and write to a temp file that's moved into place, so a
+    // crash or full disk mid-write can never leave a half-written overrides file.
+    private static void write(JSONObject json, File file) throws IOException {
         File parent = file.getAbsoluteFile().getParentFile();
+        if (!parent.isDirectory()) parent.mkdirs();
         if (file.isFile()) Files.copy(file.toPath(), new File(parent, file.getName() + ".bak").toPath(), StandardCopyOption.REPLACE_EXISTING);
         File temp = File.createTempFile(file.getName(), ".tmp", parent);
         try {
@@ -157,7 +237,6 @@ public final class ProtocolOverrides {
         } finally {
             Files.deleteIfExists(temp.toPath());
         }
-        return added;
     }
 
     // org.json doesn't keep key order, so the file is written by hand: entries by protocol number,
@@ -185,6 +264,7 @@ public final class ProtocolOverrides {
                 for (int k = 0; k < keys.size(); k++) {
                     Object value = entry.get(keys.get(k));
                     String rendered = value instanceof JSONObject ? ((JSONObject) value).toString(2).replace("\n", "\n    ")
+                            : value instanceof JSONArray ? ((JSONArray) value).toString(2).replace("\n", "\n    ")
                             : JSONObject.valueToString(value);
                     out.append("    ").append(JSONObject.quote(keys.get(k))).append(": ").append(rendered)
                             .append(k < keys.size() - 1 ? ",\n" : "\n");

@@ -32,7 +32,7 @@ public class DuplicateReportWriter {
         List<String> suggestions = new ArrayList<String>();
         for (List<Protocol> group : result.identical) {
             appendTable(html, group, overrides);
-            Protocol keep = newest(group);
+            Protocol keep = DuplicateFinder.suggestedKeep(group);
             for (Protocol p : sorted(group)) {
                 String number = number(p);
                 if (p != keep && number != null && !isExcluded(p, overrides)) suggestions.add("  \"" + number + "\": { \"excluded\": true },");
@@ -70,17 +70,6 @@ public class DuplicateReportWriter {
                     .append("</td><td>").append(isExcluded(p, overrides) ? "excluded" : "yes").append("</td></tr>\n");
         }
         html.append("</table>\n");
-    }
-
-    // lastUpdated is an ISO-8601 timestamp from protocolmetadata.json, so text order is date order.
-    private static Protocol newest(List<Protocol> group) {
-        Protocol best = null;
-        for (Protocol p : sorted(group)) {
-            String updated = p.getMetadata() == null ? null : p.getMetadata().getLastUpdated();
-            String bestUpdated = best == null || best.getMetadata() == null ? null : best.getMetadata().getLastUpdated();
-            if (best == null || (updated != null && (bestUpdated == null || updated.compareTo(bestUpdated) > 0))) best = p;
-        }
-        return best;
     }
 
     private static List<Protocol> sorted(List<Protocol> group) {
