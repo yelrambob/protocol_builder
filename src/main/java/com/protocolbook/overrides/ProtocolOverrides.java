@@ -15,6 +15,7 @@ import java.io.Writer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -117,7 +118,7 @@ public final class ProtocolOverrides {
      * so the file can be searched by name. protocolName is only a label - it's never read back; use
      * "title" to rename a protocol in the book. Everything else on existing entries is left untouched,
      * entries for numbers no longer on the scanner are kept, and the file is written sorted by protocol
-     * number. Returns how many new entries were added.
+     * number. The previous file is kept as &lt;file&gt;.bak. Returns how many new entries were added.
      */
     public static int mergeTemplate(Map<String, String> protocolNames, File file) throws IOException {
         JSONObject json = file.isFile()
@@ -134,7 +135,17 @@ public final class ProtocolOverrides {
             }
             if (e.getValue() != null) json.getJSONObject(number).put("protocolName", e.getValue());
         }
-        try (Writer w = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) { w.write(sortedJson(json)); }
+        // Keep the previous version as <file>.bak, and write to a temp file that's moved into place, so a
+        // crash or full disk mid-write can never leave a half-written overrides file.
+        File parent = file.getAbsoluteFile().getParentFile();
+        if (file.isFile()) Files.copy(file.toPath(), new File(parent, file.getName() + ".bak").toPath(), StandardCopyOption.REPLACE_EXISTING);
+        File temp = File.createTempFile(file.getName(), ".tmp", parent);
+        try {
+            try (Writer w = new OutputStreamWriter(new FileOutputStream(temp), StandardCharsets.UTF_8)) { w.write(sortedJson(json)); }
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temp.toPath());
+        }
         return added;
     }
 
