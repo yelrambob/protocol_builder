@@ -75,6 +75,10 @@ public class ProtocolBuilderGui extends JFrame {
             @Override public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean selected, boolean focus) {
                 Step step = (Step) value;
                 String mark = step.section != null && session != null && session.reviewedSections.contains(step.section.title()) ? "  ✓" : "";
+                if (step.panel instanceof KernelPanel) {
+                    int blank = KernelPanel.unnamed(session);
+                    mark = blank == 0 ? "  ✓" : "  (" + blank + " to name)";
+                }
                 JLabel l = (JLabel) super.getListCellRendererComponent(list, step.title + mark, index, selected, focus);
                 l.setBorder(new EmptyBorder(6, 10, 6, 10));
                 if (step.section != null) l.setBorder(new EmptyBorder(4, 22, 4, 10));
@@ -126,6 +130,7 @@ public class ProtocolBuilderGui extends JFrame {
         steps.add(new Step("1. Choose protocols", setupPanel, null));
         if (session != null) {
             steps.add(new Step("2. Leave out protocols", new ExcludePanel(this), null));
+            if (!session.kernelSamples.isEmpty()) steps.add(new Step("3. Kernel names", new KernelPanel(this), null));
             for (Session.Section section : session.sections)
                 steps.add(new Step(section.title() + " (" + section.protocols.size() + ")", new SectionPanel(this, section), section));
             steps.add(new Step("Review & create book", new FinishPanel(this), null));
@@ -186,8 +191,14 @@ public class ProtocolBuilderGui extends JFrame {
         });
         JMenuItem exit = new JMenuItem("Exit");
         exit.addActionListener(e -> dispose());
+        JMenuItem pictures = new JMenuItem("Scan range pictures\u2026");
+        pictures.addActionListener(e -> {
+            if (session == null) JOptionPane.showMessageDialog(this, "Load the protocols first - the pictures are kept next to the changes file.");
+            else PicturePicker.manage(this, session.file(com.protocolbook.html.ScanRangePictures.FOLDER));
+        });
         file.add(open);
         file.add(save);
+        file.add(pictures);
         file.addSeparator();
         file.add(exit);
         bar.add(file);
@@ -287,6 +298,8 @@ public class ProtocolBuilderGui extends JFrame {
             + "<p><b>1. Choose protocols</b> &mdash; the folder of exported protocols (or a Protocols.xlsm workbook) and the "
             + "protocol-overrides.json file your changes are saved in. Label files, logo and changelog are read from that file's folder.</p><br>"
             + "<p><b>2. Leave out protocols</b> &mdash; tick the ones that shouldn't be in the book. Duplicates are marked.</p><br>"
+            + "<p><b>3. Kernel names</b> &mdash; the export only has a number for each recon kernel; type the name the book "
+            + "should show (saved to kernel-labels.json). New kernels are added to that list automatically each time you load.</p><br>"
             + "<p><b>Sections</b> &mdash; one screen per body area. Tick <i>Edit</i> on the protocols to change and press "
             + "<i>Edit checked</i>, or double-click a row. Values you've set are shown in the accent color. "
             + "The <i>Worth a look</i> column flags things that may be wrong.</p><br>"

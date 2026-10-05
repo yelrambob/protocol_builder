@@ -27,11 +27,14 @@ For building or reviewing the book without editing JSON by hand, double-click **
 
 1. **Choose protocols** — the exported protocols folder (or a `Protocols.xlsm` workbook) and the changes file, `protocol-overrides.json`. Label files, `logo.png`, `changelog.json`, `manual-protocols.json` and the `reference workbooks` folder are read from the changes file's folder, the way the command line reads them from the current directory.
 2. **Leave out protocols** — every protocol with a *Leave out* box, a search box, and a note on duplicates (same settings or same name). *Leave out suggested duplicates* keeps the most recently updated copy of each identical group, the same suggestion as `--duplicates`.
-3. **One screen per section** (Adult — Head, Adult — Chest, ...) — one line per protocol with kV, mA, pitch, contrast volume @ rate, delay, main recon, CTDIvol and notes. Values set by hand show in the accent color. *Worth a look* flags likely problems: a name that says "with contrast" with no IV contrast (or the reverse), a contrast series with no volume or rate, and a kV that differs from the one most of the section uses. Tick *Edit* on the protocols to change and press *Edit checked* (or double-click a row); *Set contrast for checked* applies one volume/rate/delay to several at once. *Section reviewed* ticks the section off in the step list.
-   - The editor has four tabs. **Exam & contrast**: title, contrast volume/rate/delay, sends-to, scan range, exam dose, 3D on/off and scanning notes, with the scanner's value shown next to each box. **Series settings** and **Recons**: grids that start from what the book shows now, where any cell you change is highlighted (hover a cell to see the scanner's value). Clearing a cell, or typing the scanner's value back, removes the change. **Added fields**: information the scanner has no place for. *Add a field* asks what it applies to (Exam or one series), a title (titles used before are offered again) and the value. *Save & next* / *Save & previous* step through the checked protocols.
-4. **Review & create book** — every manual change in one list (scanner value → new value), then the outputs. The **book PDF** and the **list of manual changes (PDF)** are ticked by default; the **HTML book** is optional. Choose the book title, the file name (*Save as*) and the folder. Files come out as `<name>.pdf`, `<name>.html` and `<name> - changes.pdf`.
+3. **Kernel names** — the export only has a number for each recon kernel. This screen lists every kernel code the protocols use, a few recon names using each one (e.g. "AXIAL PELVIS STD 2.5MM" gives away Standard), and a box for the name the book shows. Names save to `kernel-labels.json` as you type. Each load adds any new kernel code to that file automatically, so `--init-kernel-labels` is never needed with the window. The step shows how many codes still need a name.
+4. **One screen per section** (Adult — Head, Adult — Chest, ...) — one line per protocol with kV, mA, pitch, contrast volume @ rate, delay, main recon, CTDIvol and notes. Values set by hand show in the accent color. *Worth a look* flags likely problems: a name that says "with contrast" with no IV contrast (or the reverse), a contrast series with no volume or rate, and a kV that differs from the one most of the section uses. Tick *Edit* on the protocols to change and press *Edit checked* (or double-click a row); *Set contrast for checked* applies one volume/rate/delay to several at once. *Section reviewed* ticks the section off in the step list.
+   - The editor has four tabs. **Exam & contrast**: title, contrast volume/rate/delay, sends-to, scan range, exam dose, 3D on/off and scanning notes, with the scanner's value shown next to each box. **Series settings** and **Recons**: grids that start from what the book shows now, where any cell you change is highlighted (hover a cell to see the scanner's value). Clearing a cell, or typing the scanner's value back, removes the change. **Added fields**: information the scanner has no place for. **Scan range pictures**: pick a picture from the library and drag on it to draw the scan range. Each new box gets the next color (red, blue, green, orange, purple, ...). Boxes can overlap. Click a box to select it, then drag it to move it, drag a corner to resize it, or press Delete to remove it. Give each box a label (e.g. Arterial, Venous) or a different color. **Apply to other protocols…** copies the picture and its boxes to any protocols still in the book: the current section is listed first, with search and *Tick this section*. Protocols that already have exactly those boxes are greyed out and skipped; one using the same picture with different boxes is replaced after a warning. Each protocol gets its own copy, so one can still be adjusted later. Protocols you apply boxes to that are waiting in the same *Edit checked* run are skipped by *Save & next*. The boxes are drawn into the picture in the HTML and PDF book, with a color key underneath. *Add a field* asks what it applies to (Exam or one series), a title (titles used before are offered again) and the value. *Save & next* / *Save & previous* step through the checked protocols.
+5. **Review & create book** — every manual change in one list (scanner value → new value), then the outputs. The **book PDF** and the **list of manual changes (PDF)** are ticked by default; the **HTML book** is optional. Choose the book title, the file name (*Save as*) and the folder. Files come out as `<name>.pdf`, `<name>.html` and `<name> - changes.pdf`.
 
 Every edit is saved to `protocol-overrides.json` straight away (the previous version is kept as `protocol-overrides.json.bak`), so you can stop halfway through and pick up later. It's the same file the command line and the `.bat` scripts use, so either works on the same changes. Changes only affect the book; the scanner keeps its own settings. That's why the changes PDF lists the scanner's value next to each new one: it doubles as the list of what to update at the console.
+
+**Scan range pictures** live in a `scan range images` folder next to `protocol-overrides.json`. Add them with *Import pictures…* (in the picture picker, or *File → Scan range pictures…*); PNG, JPG, GIF and BMP work. The pictures are a shared library: any number of protocols can use the same one, each with its own boxes. Box positions are stored as fractions of the picture's size, so a picture can be swapped for a sharper copy of the same image without moving the boxes.
 
 The **Colors** menu sets the book's two colors: a few ready-made pairs, or *Choose main color* / *Choose accent color* for any color. The window's header bar shows the current pair. The choice, along with the folders, title, file name and output boxes, is remembered for next time.
 
@@ -192,6 +195,18 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
     ]
   }
   ```
+- `scanRangePictures` — pictures from the `scan range images` folder (next to the overrides file) with the scan range drawn on as boxes, shown under the scan range line. `x`/`y` is the box's top-left corner and `w`/`h` its size, all as fractions (0–1) of the picture's width and height. The GUI writes these when you draw; a picture that isn't in the folder prints a `WARN:` line and is left out.
+
+  ```json
+  "9.2": {
+    "scanRangePictures": [
+      { "image": "legs scout.png", "boxes": [
+        { "label": "Arterial", "color": "#e53935", "x": 0.12, "y": 0.07, "w": 0.75, "h": 0.4 },
+        { "label": "Venous",   "color": "#1e88e5", "x": 0.16, "y": 0.52, "w": 0.68, "h": 0.4 }
+      ] }
+    ]
+  }
+  ```
 - `threeD` — controls the **3D MIP** and **3D VR** series added at the bottom of a protocol's page, each listing a 10° rotation and a separate 10° tumble. They appear automatically for any protocol that sends to AW Server: any auto-send host (including ones typed in `reconSendDestinations`) or `sendDestination` text with "AW" at the start of a word, e.g. `AW`, `AWSERVER`, `AW_SERVER1`, `AW Server`. Set `"threeD": true` to add them to a protocol that doesn't match, or `"threeD": false` to leave them off one that does.
 - `protocolName` — filled in by `--init-overrides` with the protocol's name on the scanner, so you can find a protocol in this file by searching for its name (Ctrl+F) instead of knowing its number. It's only a label: it's refreshed on every `--init-overrides` run and never read back, so editing it does nothing. Use `title` to rename a protocol in the book.
 - `reconSendDestinations` — corrects the auto-send hosts for individual recons when the export lists fewer than the scanner really sends to (e.g. a stroke CTA that also goes to `RAPID 1`). Key each recon by its name as shown in the book (case and extra spaces don't matter) and list **every** host, comma-separated: the typed list replaces what the export says for that recon. Recons you don't name keep the exported hosts, and the "Auto-sends to:" header line includes the typed hosts. A name that matches no recon in that protocol prints a `WARN:` line when the book is built, so typos don't slip by. `--init-overrides` never removes these entries.
@@ -245,6 +260,8 @@ All three are only used when `--html` is passed.
 - **Protocol reference images** aren't listed anywhere — point `--protocol-images-base` at wherever you host them (e.g. your own EC2 server) and name each file after its protocol number (`9.2.png`, `8.8.png`, ...). Every protocol page attempts to load its own image and hides it client-side (no broken-image icon) if that particular protocol doesn't have one.
 
 ### Populating the label/override files: the `--init-*` workflow
+
+With the [Protocol Builder window](#the-protocol-builder-window-gui) none of these are needed. It adds protocols to `protocol-overrides.json` as you change them, adds new kernel codes to `kernel-labels.json` on every load (named on its *Kernel names* screen), and plane and category labels have built-in defaults. The init scripts below are for working from the command line.
 
 Run once against your real export data to seed each file with every code/protocol number actually in use, with blank values ready to fill in:
 
@@ -358,7 +375,8 @@ src/main/java/com/protocolbook/
   overrides/                      ProtocolOverride model + load/save/mergeTemplate for protocol-overrides.json
   changes/ManualChanges.java      Every hand-set value next to the scanner's (GUI review screen, --changes-pdf)
   gui/                            The Protocol Builder window (Swing): ProtocolBuilderGui (frame, steps, Colors menu),
-                                   SetupPanel, ExcludePanel, SectionPanel + SectionRow (at-a-glance line and checks),
+                                   ScanRangeCanvas + PicturePicker (drawing scan range boxes, picture library),
+                                   SetupPanel, ExcludePanel, KernelPanel, SectionPanel + SectionRow (at-a-glance line and checks),
                                    ProtocolEditorDialog, FinishPanel, Session (loaded data), Prefs (remembered choices)
   labels/                         CodeLabels (generic code->label file) + LabelConfig (kernel/plane/category)
   manual/ManualProtocols.java     Loads/merges hand-authored protocols not present on the scanner
@@ -369,6 +387,7 @@ src/main/java/com/protocolbook/
     ProtocolBookPdfWriter.java    --pdf output (same content as the HTML book, rendered with openhtmltopdf)
     ChangeReportWriter.java       --changes-pdf output
     ScannerValues.java            The scanner's own value for each overridable setting, as the book shows it
+    ScanRangePictures.java        Scan range picture library and drawing the boxes (shared by the GUI and the book)
     BookTheme.java                The book's two colors (--primary-color / --accent-color, the GUI's Colors menu)
     PdfLibrary.java                --pdf-library and --reference-library loading (same format, two separate lists)
     Changelog.java                 --changelog loading (hand-typed "Recent Changes" log)

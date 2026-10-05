@@ -1,6 +1,7 @@
 package com.protocolbook.gui;
 
 import com.protocolbook.changes.ManualChanges;
+import com.protocolbook.html.ScanRangePictures;
 import com.protocolbook.html.ScannerValues;
 import com.protocolbook.model.Group;
 import com.protocolbook.model.Protocol;
@@ -13,6 +14,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -32,6 +34,8 @@ final class ProtocolEditorDialog extends JDialog {
     private final Session session;
     private final List<Protocol> queue;
     private int index;
+    /** Protocols in the queue that got their scan range boxes applied from another one - Save & next skips them. */
+    private final java.util.Set<Protocol> skip = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Protocol, Boolean>());
     private Editor editor;
 
     private final JPanel body = new JPanel(new BorderLayout());
@@ -52,8 +56,8 @@ final class ProtocolEditorDialog extends JDialog {
             @Override public void windowClosing(java.awt.event.WindowEvent e) { cancel(); }
         });
 
-        previous.addActionListener(e -> { if (saveCurrent()) open(index - 1); });
-        next.addActionListener(e -> { if (saveCurrent()) open(index + 1); });
+        previous.addActionListener(e -> { if (saveCurrent()) open(step(-1)); });
+        next.addActionListener(e -> { if (saveCurrent()) open(step(1)); });
         done.addActionListener(e -> { if (saveCurrent()) dispose(); });
         JButton cancel = new JButton("Cancel");
         cancel.addActionListener(e -> cancel());
@@ -83,9 +87,20 @@ final class ProtocolEditorDialog extends JDialog {
         body.add(editor.component(), BorderLayout.CENTER);
         body.revalidate();
         body.repaint();
-        position.setText(queue.size() > 1 ? "Protocol " + (i + 1) + " of " + queue.size() : "");
-        previous.setEnabled(i > 0);
-        next.setEnabled(i < queue.size() - 1);
+        updateNavigation();
+    }
+
+    /** The next (direction 1) or previous (-1) protocol in the queue that isn't skipped, or -1. */
+    private int step(int direction) {
+        for (int i = index + direction; i >= 0 && i < queue.size(); i += direction) if (!skip.contains(queue.get(i))) return i;
+        return -1;
+    }
+
+    private void updateNavigation() {
+        position.setText(queue.size() > 1 ? "Protocol " + (index + 1) + " of " + queue.size()
+                + (skip.isEmpty() ? "" : " (" + skip.size() + " skipped - boxes applied)") : "");
+        previous.setEnabled(step(-1) >= 0);
+        next.setEnabled(step(1) >= 0);
     }
 
     private void cancel() {
@@ -197,6 +212,7 @@ final class ProtocolEditorDialog extends JDialog {
         final GridModel seriesModel = new GridModel("Series", ProtocolOverride.SERIES_FIELDS);
         final GridModel reconModel = new GridModel("Series", ProtocolOverride.RECON_FIELDS);
         final AddedModel addedModel;
+        final List<ProtocolOverride.ScanRangePicture> pictures = new ArrayList<ProtocolOverride.ScanRangePicture>();
         final JTable seriesTable = new JTable(seriesModel), reconTable = new JTable(reconModel), addedTable;
         final String startState;
 
@@ -252,6 +268,11 @@ final class ProtocolEditorDialog extends JDialog {
             }
             addedModel = new AddedModel(o.getAddedFields());
             addedTable = new JTable(addedModel);
+            for (ProtocolOverride.ScanRangePicture pic : o.getScanRangePictures()) {
+                ProtocolOverride.ScanRangePicture copy = new ProtocolOverride.ScanRangePicture(pic.getImage());
+                for (ProtocolOverride.Box b : pic.getBoxes()) copy.getBoxes().add(b.copy());
+                pictures.add(copy);
+            }
             startState = state();
         }
 
@@ -286,6 +307,7 @@ final class ProtocolEditorDialog extends JDialog {
                     "Each reconstruction, starting from what the scanner has. Kernel and ASIR show as typed (e.g. \"Bone\", \"40%\"). "
                             + "Sends to lists every destination, comma-separated.", 90, 300, 75, 75, 90, 60, 90, 160));
             tabs.addTab("Added fields", addedTab());
+            tabs.addTab("Scan range pictures", picturesTab());
 
             JPanel panel = new JPanel(new BorderLayout());
             panel.add(top, BorderLayout.NORTH);
@@ -355,6 +377,180 @@ final class ProtocolEditorDialog extends JDialog {
             return panel;
         }
 
+        // Pictures on the left, the selected one in the middle to draw on, its boxes (color + label) on the right.
+        private JComponent picturesTab() {
+            File folder = session.file(ScanRangePictures.FOLDER);
+            DefaultListModel<ProtocolOverride.ScanRangePicture> listModel = new DefaultListModel<ProtocolOverride.ScanRangePicture>();
+            for (ProtocolOverride.ScanRangePicture pic : pictures) listModel.addElement(pic);
+            JList<ProtocolOverride.ScanRangePicture> list = new JList<ProtocolOverride.ScanRangePicture>(listModel);
+            list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            list.setCellRenderer(new DefaultListCellRenderer() {
+                @Override public Component getListCellRendererComponent(JList<?> l, Object v, int i, boolean sel, boolean focus) {
+                    ProtocolOverride.ScanRangePicture pic = (ProtocolOverride.ScanRangePicture) v;
+                    int n = pic.getBoxes().size();
+                    JLabel label = (JLabel) super.getListCellRendererComponent(l, "<html><b>" + pic.getImage() + "</b><br>" + n + " box" + (n == 1 ? "" : "es") + "</html>", i, sel, focus);
+                    label.setIcon(PicturePicker.thumbnail(new File(folder, pic.getImage())) == null ? null
+                            : new ImageIcon(PicturePicker.thumbnail(new File(folder, pic.getImage())).getImage().getScaledInstance(48, -1, Image.SCALE_SMOOTH)));
+                    label.setBorder(new EmptyBorder(4, 4, 4, 4));
+                    return label;
+                }
+            });
+
+            BoxModel boxModel = new BoxModel();
+            JTable boxTable = new JTable(boxModel);
+            Ui.setUp(boxTable);
+            boxTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+            Ui.widths(boxTable, 50, 190);
+            boxTable.getColumnModel().getColumn(0).setCellRenderer(new DefaultTableCellRenderer() {
+                @Override public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean focus, int r, int c) {
+                    super.getTableCellRendererComponent(t, "", sel, focus, r, c);
+                    setBackground(ScanRangePictures.color((String) v));
+                    setToolTipText("Double-click to change the color");
+                    return this;
+                }
+            });
+            final boolean[] syncing = {false};
+            ScanRangeCanvas canvas = new ScanRangeCanvas(() -> {
+                boxModel.fireTableDataChanged();
+                list.repaint();
+            }, box -> {
+                if (syncing[0]) return;
+                syncing[0] = true;
+                int row = box == null ? -1 : boxModel.boxes.indexOf(box);
+                if (row >= 0) boxTable.setRowSelectionInterval(row, row); else boxTable.clearSelection();
+                syncing[0] = false;
+            });
+            boxModel.onEdit = canvas::repaint;
+            boxTable.getSelectionModel().addListSelectionListener(e -> {
+                if (e.getValueIsAdjusting() || syncing[0]) return;
+                syncing[0] = true;
+                int row = boxTable.getSelectedRow();
+                canvas.select(row >= 0 && row < boxModel.boxes.size() ? boxModel.boxes.get(row) : null);
+                syncing[0] = false;
+            });
+            Runnable recolor = () -> {
+                ProtocolOverride.Box b = canvas.selected();
+                if (b == null) { JOptionPane.showMessageDialog(ProtocolEditorDialog.this, "Select a box first."); return; }
+                Color c = JColorChooser.showDialog(ProtocolEditorDialog.this, "Box color", ScanRangePictures.color(b.getColor()));
+                if (c == null) return;
+                b.setColor(String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue()));
+                boxModel.fireTableDataChanged();
+                canvas.repaint();
+            };
+            boxTable.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                    if (e.getClickCount() == 2 && boxTable.columnAtPoint(e.getPoint()) == 0) recolor.run();
+                }
+            });
+
+            list.addListSelectionListener(e -> {
+                if (e.getValueIsAdjusting()) return;
+                ProtocolOverride.ScanRangePicture pic = list.getSelectedValue();
+                java.awt.image.BufferedImage img = null;
+                if (pic != null) {
+                    try { img = javax.imageio.ImageIO.read(new File(folder, pic.getImage())); } catch (java.io.IOException ignored) {}
+                    if (img == null) JOptionPane.showMessageDialog(ProtocolEditorDialog.this,
+                            "Can't open " + new File(folder, pic.getImage()) + " - it may have been moved or renamed.");
+                }
+                boxModel.boxes = pic == null ? new ArrayList<ProtocolOverride.Box>() : pic.getBoxes();
+                boxModel.fireTableDataChanged();
+                canvas.show(img, pic == null ? null : pic.getBoxes());
+            });
+
+            JButton add = new JButton("Add picture…");
+            add.addActionListener(e -> {
+                String name = PicturePicker.choose(ProtocolEditorDialog.this, folder);
+                if (name == null) return;
+                ProtocolOverride.ScanRangePicture pic = new ProtocolOverride.ScanRangePicture(name);
+                pictures.add(pic);
+                listModel.addElement(pic);
+                list.setSelectedValue(pic, true);
+            });
+            JButton remove = new JButton("Remove picture");
+            remove.addActionListener(e -> {
+                ProtocolOverride.ScanRangePicture pic = list.getSelectedValue();
+                if (pic == null) return;
+                if (!pic.getBoxes().isEmpty() && JOptionPane.showConfirmDialog(ProtocolEditorDialog.this,
+                        "Remove " + pic.getImage() + " and its boxes from this protocol? (The picture stays in the library.)",
+                        "Remove picture", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+                pictures.remove(pic);
+                listModel.removeElement(pic);
+            });
+            JButton applyOthers = new JButton("Apply to other protocols…");
+            applyOthers.setToolTipText("Copy this picture and its boxes to other protocols in the book");
+            applyOthers.addActionListener(e -> {
+                ProtocolOverride.ScanRangePicture pic = list.getSelectedValue();
+                if (pic == null || pic.getBoxes().isEmpty()) {
+                    JOptionPane.showMessageDialog(ProtocolEditorDialog.this, "Pick a picture and draw its boxes first.");
+                    return;
+                }
+                List<Protocol> done = ApplyBoxesDialog.show(ProtocolEditorDialog.this, session, p, pic);
+                if (done.isEmpty() || !gui.save()) return;
+                int skipped = 0;
+                for (Protocol q : done) if (queue.contains(q) && queue.indexOf(q) != index && skip.add(q)) skipped++;
+                updateNavigation();
+                JOptionPane.showMessageDialog(ProtocolEditorDialog.this, "Applied " + pic.getImage() + " to " + done.size() + " protocol"
+                        + (done.size() == 1 ? "" : "s") + "."
+                        + (skipped == 0 ? "" : "\n" + skipped + " of them " + (skipped == 1 ? "was" : "were")
+                        + " waiting in this editor and will be skipped by Save & next (double-click one on the section screen to edit it)."));
+            });
+            JButton color = new JButton("Change color…");
+            color.addActionListener(e -> recolor.run());
+            JButton delete = new JButton("Delete box");
+            delete.addActionListener(e -> canvas.deleteSelected());
+
+            JPanel left = new JPanel(new BorderLayout(0, 6));
+            left.add(new JScrollPane(list), BorderLayout.CENTER);
+            JPanel leftButtons = new JPanel(new GridLayout(0, 1, 0, 4));
+            leftButtons.add(add);
+            leftButtons.add(remove);
+            leftButtons.add(applyOthers);
+            left.add(leftButtons, BorderLayout.SOUTH);
+            left.setPreferredSize(new Dimension(220, 100));
+
+            JPanel right = new JPanel(new BorderLayout(0, 6));
+            right.add(new JScrollPane(boxTable), BorderLayout.CENTER);
+            JPanel rightButtons = new JPanel(new GridLayout(0, 1, 0, 4));
+            rightButtons.add(color);
+            rightButtons.add(delete);
+            right.add(rightButtons, BorderLayout.SOUTH);
+            right.setPreferredSize(new Dimension(260, 100));
+
+            JPanel panel = new JPanel(new BorderLayout(8, 6));
+            panel.setBorder(new EmptyBorder(8, 10, 8, 10));
+            panel.add(Ui.help("Add a picture, then drag on it to draw a box - each new box gets the next color, and boxes can overlap. "
+                    + "Click a box to select it, then drag it to move or drag a corner to resize; Delete removes it. "
+                    + "Type a label for each box on the right (e.g. Arterial, Venous). "
+                    + "The boxes are drawn into the picture in the book."), BorderLayout.NORTH);
+            panel.add(left, BorderLayout.WEST);
+            panel.add(canvas, BorderLayout.CENTER);
+            panel.add(right, BorderLayout.EAST);
+            if (!listModel.isEmpty()) list.setSelectedIndex(0);
+            return panel;
+        }
+
+        /** The selected picture's boxes: Color / Label. */
+        private final class BoxModel extends AbstractTableModel {
+            List<ProtocolOverride.Box> boxes = new ArrayList<ProtocolOverride.Box>();
+            Runnable onEdit;
+
+            @Override public int getRowCount() { return boxes.size(); }
+
+            @Override public int getColumnCount() { return 2; }
+
+            @Override public String getColumnName(int c) { return c == 0 ? "Color" : "Label"; }
+
+            @Override public boolean isCellEditable(int r, int c) { return c == 1; }
+
+            @Override public Object getValueAt(int r, int c) { return c == 0 ? boxes.get(r).getColor() : boxes.get(r).getLabel(); }
+
+            @Override public void setValueAt(Object v, int r, int c) {
+                boxes.get(r).setLabel(v == null ? "" : v.toString().trim());
+                fireTableRowsUpdated(r, r);
+                if (onEdit != null) onEdit.run();
+            }
+        }
+
         private JComponent addedTab() {
             Ui.setUp(addedTable);
             Ui.widths(addedTable, 260, 220, 520);
@@ -422,6 +618,11 @@ final class ProtocolEditorDialog extends JDialog {
             for (GridRow r : seriesModel.rows) s.append('|').append(String.join(",", r.value));
             for (GridRow r : reconModel.rows) s.append('|').append(String.join(",", r.value));
             for (ProtocolOverride.AddedField f : addedModel.fields) s.append('|').append(f.getSeries()).append(f.getTitle()).append(f.getValue());
+            for (ProtocolOverride.ScanRangePicture pic : pictures) {
+                s.append('|').append(pic.getImage());
+                for (ProtocolOverride.Box b : pic.getBoxes())
+                    s.append(',').append(b.getLabel()).append(b.getColor()).append(b.getX()).append(b.getY()).append(b.getW()).append(b.getH());
+            }
             return s.toString();
         }
 
@@ -459,6 +660,8 @@ final class ProtocolEditorDialog extends JDialog {
                 Map<String, String> fields = changedFields(row, reconModel.fields);
                 if (!fields.isEmpty()) target.getRecons().put(r.getName(), fields);
             }
+            target.getScanRangePictures().clear();
+            target.getScanRangePictures().addAll(pictures);
             target.getAddedFields().clear();
             for (ProtocolOverride.AddedField f : addedModel.fields) if (!f.isBlank()) target.getAddedFields().add(f);
         }

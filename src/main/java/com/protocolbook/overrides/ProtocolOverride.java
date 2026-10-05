@@ -35,6 +35,7 @@ public class ProtocolOverride {
     private Map<String, Map<String, String>> recons = new LinkedHashMap<String, Map<String, String>>();
     private Map<String, Map<String, String>> series = new LinkedHashMap<String, Map<String, String>>();
     private final List<AddedField> addedFields = new ArrayList<AddedField>();
+    private final List<ScanRangePicture> scanRangePictures = new ArrayList<ScanRangePicture>();
     public String getTitle(){return title;} public void setTitle(String v){title=v;}
     public String getNotes(){return notes;} public void setNotes(String v){notes=v;}
     public boolean isExcluded(){return excluded;} public void setExcluded(boolean v){excluded=v;}
@@ -70,6 +71,41 @@ public class ProtocolOverride {
             if (seriesNumber == null ? f.isExam() : String.valueOf(seriesNumber).equals(f.getSeries())) out.add(f);
         }
         return out;
+    }
+
+    /** Pictures (from the "scan range images" folder) with the scan range drawn on as colored boxes. */
+    public List<ScanRangePicture> getScanRangePictures(){return scanRangePictures;}
+
+    /** One picture from the scan range picture library and the boxes drawn on it for this protocol. */
+    public static class ScanRangePicture {
+        private String image;
+        private final List<Box> boxes = new ArrayList<Box>();
+        public ScanRangePicture() {}
+        public ScanRangePicture(String image) { this.image = image; }
+        /** File name inside the "scan range images" folder (next to protocol-overrides.json). */
+        public String getImage(){return image;} public void setImage(String v){image=v;}
+        public List<Box> getBoxes(){return boxes;}
+    }
+
+    /**
+     * One box drawn on a picture. Position and size are fractions of the picture's width/height (0-1),
+     * so the box stays put whatever size the picture is shown at.
+     */
+    public static class Box {
+        private String label, color;
+        private double x, y, w, h;
+        public Box() {}
+        public Box(String label, String color, double x, double y, double w, double h) {
+            this.label = label; this.color = color; this.x = x; this.y = y; this.w = w; this.h = h;
+        }
+        public Box copy() { return new Box(label, color, x, y, w, h); }
+        public String getLabel(){return label;} public void setLabel(String v){label=v;}
+        /** "#rrggbb" */
+        public String getColor(){return color;} public void setColor(String v){color=v;}
+        public double getX(){return x;} public void setX(double v){x=v;}
+        public double getY(){return y;} public void setY(double v){y=v;}
+        public double getW(){return w;} public void setW(double v){w=v;}
+        public double getH(){return h;} public void setH(double v){h=v;}
     }
 
     /** One hand-added "Title: value" line, shown under the exam header or under one series. */

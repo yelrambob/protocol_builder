@@ -97,6 +97,19 @@ public final class ProtocolOverrides {
                 if (f != null) o.getAddedFields().add(new ProtocolOverride.AddedField(
                         f.optString("series", null), f.optString("title", ""), f.optString("value", "")));
             }
+            JSONArray pictures = entry.optJSONArray("scanRangePictures");
+            if (pictures != null) for (int i = 0; i < pictures.length(); i++) {
+                JSONObject pic = pictures.optJSONObject(i);
+                if (pic == null || pic.optString("image", "").trim().isEmpty()) continue;
+                ProtocolOverride.ScanRangePicture picture = new ProtocolOverride.ScanRangePicture(pic.optString("image").trim());
+                JSONArray boxes = pic.optJSONArray("boxes");
+                if (boxes != null) for (int b = 0; b < boxes.length(); b++) {
+                    JSONObject box = boxes.optJSONObject(b);
+                    if (box != null) picture.getBoxes().add(new ProtocolOverride.Box(box.optString("label", ""), box.optString("color", "#e53935"),
+                            box.optDouble("x", 0), box.optDouble("y", 0), box.optDouble("w", 0), box.optDouble("h", 0)));
+                }
+                o.getScanRangePictures().add(picture);
+            }
             out.put(key, o);
         }
         return out;
@@ -128,7 +141,7 @@ public final class ProtocolOverrides {
 
     // Fields in the order they're written, so every entry reads the same top to bottom; any other key follows these.
     private static final List<String> FIELD_ORDER = Arrays.asList("protocolName", "title", "notes", "excluded", "sendDestination",
-            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "contrastDelay", "examCtdi", "examDlp", "series", "recons", "reconSendDestinations", "threeD", "addedFields");
+            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "contrastDelay", "examCtdi", "examDlp", "series", "recons", "reconSendDestinations", "threeD", "addedFields", "scanRangePictures");
 
     /**
      * Adds an empty entry for any protocol number not already present in the file (creating the file
@@ -203,8 +216,23 @@ public final class ProtocolOverrides {
                 added.put(field);
             }
             if (added.isEmpty()) entry.remove("addedFields"); else entry.put("addedFields", added);
+            JSONArray pictures = new JSONArray();
+            for (ProtocolOverride.ScanRangePicture pic : o.getScanRangePictures()) {
+                if (pic.getImage() == null || pic.getImage().trim().isEmpty()) continue;
+                JSONArray boxes = new JSONArray();
+                for (ProtocolOverride.Box b : pic.getBoxes())
+                    boxes.put(new JSONObject().put("label", b.getLabel() == null ? "" : b.getLabel().trim()).put("color", b.getColor())
+                            .put("x", round(b.getX())).put("y", round(b.getY())).put("w", round(b.getW())).put("h", round(b.getH())));
+                pictures.put(new JSONObject().put("image", pic.getImage()).put("boxes", boxes));
+            }
+            if (pictures.isEmpty()) entry.remove("scanRangePictures"); else entry.put("scanRangePictures", pictures);
         }
         write(json, file);
+    }
+
+    // Four decimal places is a tenth of a pixel on a 1000-pixel picture - plenty, and keeps the file readable.
+    private static double round(double v) {
+        return Math.round(v * 10000) / 10000.0;
     }
 
     private static void putText(JSONObject entry, String key, String value) {

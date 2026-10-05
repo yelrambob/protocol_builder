@@ -8,6 +8,7 @@ import com.protocolbook.html.Changelog;
 import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
 import com.protocolbook.html.ProtocolBookPdfWriter;
+import com.protocolbook.html.ScanRangePictures;
 import com.protocolbook.overrides.ProtocolOverrides;
 
 import javax.swing.*;
@@ -179,13 +180,15 @@ final class FinishPanel extends JPanel implements ProtocolBuilderGui.Refreshable
             @Override protected List<String> doInBackground() throws Exception {
                 List<String> lines = new ArrayList<String>();
                 for (String problem : ProtocolOverrides.problems(session.protocols, session.overrides)) lines.add("WARN: " + problem);
+                File pictures = session.file(ScanRangePictures.FOLDER);
+                for (String problem : ScanRangePictures.problems(session.protocols, session.overrides, pictures)) lines.add("WARN: " + problem);
                 String logo = Main.loadLogoDataUri(session.file("logo.png"));
                 if (pdfFile != null) {
-                    new ProtocolBookPdfWriter().withTheme(theme).write(session.protocols, session.overrides, session.labels, logo, title, pdfFile);
+                    new ProtocolBookPdfWriter().withTheme(theme).withPictureFolder(pictures).write(session.protocols, session.overrides, session.labels, logo, title, pdfFile);
                     lines.add("Wrote " + pdfFile.getAbsolutePath());
                 }
                 if (htmlFile != null) {
-                    new ProtocolBookHtmlWriter().withTheme(theme).write(session.protocols, session.overrides, session.labels, logo,
+                    new ProtocolBookHtmlWriter().withTheme(theme).withPictureFolder(pictures).write(session.protocols, session.overrides, session.labels, logo,
                             PdfLibrary.load(session.file("pdf-library.json")), PdfLibrary.load(session.file("reference-library.json")),
                             null, title, Changelog.load(session.file("changelog.json")), htmlFile);
                     lines.add("Wrote " + htmlFile.getAbsolutePath());

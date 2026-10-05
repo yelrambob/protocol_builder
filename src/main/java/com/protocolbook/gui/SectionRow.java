@@ -75,6 +75,8 @@ final class SectionRow {
 
         List<String> bits = new ArrayList<String>();
         if (o != null && blankToNull(o.getNotes()) != null) bits.add("Notes");
+        int pictures = o == null ? 0 : o.getScanRangePictures().size();
+        if (pictures > 0) bits.add(pictures + " pic" + (pictures == 1 ? "" : "s"));
         int added = o == null ? 0 : o.getAddedFields().size();
         if (added > 0) bits.add("+" + added + " field" + (added == 1 ? "" : "s"));
         extras = new Cell(String.join(", ", bits), !bits.isEmpty());

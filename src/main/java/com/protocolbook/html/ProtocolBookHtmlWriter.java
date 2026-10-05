@@ -41,6 +41,13 @@ import java.util.*;
 public class ProtocolBookHtmlWriter {
     private static final List<String> BUCKET_ORDER = Arrays.asList("Adult", "Peds");
     private BookTheme theme = BookTheme.DEFAULT;
+    private File pictureFolder;
+
+    /** The scan range picture library (see ScanRangePictures); without it no pictures are shown. */
+    public ProtocolBookHtmlWriter withPictureFolder(File folder) {
+        this.pictureFolder = folder;
+        return this;
+    }
 
     /** The colors to draw the book in; the default is the original blue and orange. */
     public ProtocolBookHtmlWriter withTheme(BookTheme theme) {
@@ -255,6 +262,7 @@ public class ProtocolBookHtmlWriter {
                     .append(HtmlSupport.esc(scanRange.trim()).replace("\n", "<br>\n")).append("</p>\n");
         }
 
+        if (override != null) appendScanRangePictures(html, override);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
             html.append("<div class=\"notes\"><strong>Scanning notes:</strong> ").append(HtmlSupport.esc(override.getNotes())).append("</div>\n");
         }
@@ -334,6 +342,24 @@ public class ProtocolBookHtmlWriter {
 
     private boolean isScout(Series s) {
         return ScannerValues.isScout(s);
+    }
+
+    // Each picture with its boxes drawn in, and a key of the labelled boxes underneath (also readable on a black-and-white printout).
+    private void appendScanRangePictures(StringBuilder html, ProtocolOverride override) {
+        if (pictureFolder == null) return;
+        for (ProtocolOverride.ScanRangePicture pic : override.getScanRangePictures()) {
+            String uri = ScanRangePictures.composedDataUri(pictureFolder, pic, 900);
+            if (uri == null) continue;
+            html.append("<div class=\"scan-picture\"><img src=\"").append(uri).append("\" alt=\"Scan range\">\n");
+            StringBuilder key = new StringBuilder();
+            for (ProtocolOverride.Box b : pic.getBoxes()) {
+                if (b.getLabel() == null || b.getLabel().trim().isEmpty()) continue;
+                key.append("<tr><td class=\"swatch\" style=\"background:").append(HtmlSupport.esc(b.getColor())).append(";\">&nbsp;</td><td>")
+                        .append(HtmlSupport.esc(b.getLabel().trim())).append("</td></tr>\n");
+            }
+            if (key.length() > 0) html.append("<table class=\"box-key\">\n").append(key).append("</table>\n");
+            html.append("</div>\n");
+        }
     }
 
     // Hand-added "Title: value" lines (see ProtocolOverride.AddedField) - the exam's under the header, a series' under its name.
@@ -548,6 +574,11 @@ public class ProtocolBookHtmlWriter {
             ".override{border-bottom:1px dotted currentColor;font-weight:600;cursor:help;}" +
             ".override-note{font-size:.85rem;color:#555;}" +
             ".added-field{margin:.3rem 0;}" +
+            ".scan-picture{margin:.6rem 0;}" +
+            ".scan-picture img{display:block;max-width:100%;max-height:560px;border-radius:6px;}" +
+            "table.box-key{width:auto;margin:.3rem 0 .6rem;}" +
+            "table.box-key td{border:none;padding:.1rem .4rem;font-size:.85rem;}" +
+            "td.swatch{width:14px;border-radius:3px;}" +
 
             "@media print{.main-menu{display:none;}body{background:#fff;}.main-content{margin-left:0;padding:0;}" +
             "section.protocol-view{box-shadow:none;border-radius:0;max-width:none;}}";

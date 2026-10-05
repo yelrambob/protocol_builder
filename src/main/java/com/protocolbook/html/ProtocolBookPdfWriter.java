@@ -38,6 +38,13 @@ public class ProtocolBookPdfWriter {
     }
 
     private BookTheme theme = BookTheme.DEFAULT;
+    private File pictureFolder;
+
+    /** The scan range picture library (see ScanRangePictures); without it no pictures are shown. */
+    public ProtocolBookPdfWriter withPictureFolder(File folder) {
+        this.pictureFolder = folder;
+        return this;
+    }
 
     /** The colors to draw the book in; the default is the original blue and orange. */
     public ProtocolBookPdfWriter withTheme(BookTheme theme) {
@@ -48,7 +55,7 @@ public class ProtocolBookPdfWriter {
     public File write(List<Protocol> protocols, Map<String, ProtocolOverride> overrides, LabelConfig labels,
                       String logoDataUri, String bookTitle, File outFile) throws IOException {
         String title = bookTitle == null || bookTitle.trim().isEmpty() ? "Protocol Book" : bookTitle;
-        ProtocolBookHtmlWriter book = new ProtocolBookHtmlWriter();
+        ProtocolBookHtmlWriter book = new ProtocolBookHtmlWriter().withPictureFolder(pictureFolder);
         Map<String, Map<Integer, List<Protocol>>> tree = book.tree(protocols, overrides, labels);
 
         StringBuilder html = new StringBuilder();
@@ -149,5 +156,10 @@ public class ProtocolBookPdfWriter {
             "tr.reformat td:first-child{padding-left:14px;}" +
             ".override{border-bottom:1px dotted #000;font-weight:bold;}" +
             ".override-note{font-size:7.5pt;color:#555;}" +
-            ".added-field{margin:3px 0;}";
+            ".added-field{margin:3px 0;}" +
+            ".scan-picture{margin:5px 0;page-break-inside:avoid;}" +
+            ".scan-picture img{max-width:100%;max-height:3.6in;}" +
+            "table.box-key{width:auto;margin:2px 0 6px;}" +
+            "table.box-key td{border:none;padding:1px 4px;}" +
+            "td.swatch{width:10px;}";
 }

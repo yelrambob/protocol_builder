@@ -10,6 +10,7 @@ import com.protocolbook.html.ProtocolBookPdfWriter;
 import com.protocolbook.html.DuplicateReportWriter;
 import com.protocolbook.duplicates.DuplicateFinder;
 import com.protocolbook.html.ProtocolImages;
+import com.protocolbook.html.ScanRangePictures;
 import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
 import com.protocolbook.labels.LabelConfig;
@@ -195,8 +196,11 @@ public class Main {
                 new ProtocolJsonWriter().writeAll(protocols, jsonDir);
                 System.out.println("Wrote combined JSON to " + jsonDir.getAbsolutePath());
             }
-            if (htmlFile != null || pdfFile != null)
+            File pictureFolder = new File(overridesFile.getAbsoluteFile().getParentFile(), ScanRangePictures.FOLDER);
+            if (htmlFile != null || pdfFile != null) {
                 for (String line : ProtocolOverrides.problems(protocols, ProtocolOverrides.load(overridesFile))) System.err.println("WARN: " + line);
+                for (String line : ScanRangePictures.problems(protocols, ProtocolOverrides.load(overridesFile), pictureFolder)) System.err.println("WARN: " + line);
+            }
             if (htmlFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
@@ -205,7 +209,7 @@ public class Main {
                 List<PdfLibrary.Entry> referenceLibrary = PdfLibrary.load(referenceLibraryFile);
                 ProtocolImages protocolImages = protocolImagesBase == null ? null : new ProtocolImages(protocolImagesBase, protocolImagesExt);
                 List<Changelog.Entry> changelog = Changelog.load(changelogFile);
-                new ProtocolBookHtmlWriter().withTheme(theme).write(protocols, overrides, labels, logoDataUri, pdfLibrary, referenceLibrary, protocolImages, bookTitle, changelog, htmlFile);
+                new ProtocolBookHtmlWriter().withTheme(theme).withPictureFolder(pictureFolder).write(protocols, overrides, labels, logoDataUri, pdfLibrary, referenceLibrary, protocolImages, bookTitle, changelog, htmlFile);
                 System.out.println("Wrote protocol book to " + htmlFile.getAbsolutePath()
                         + (overrides.isEmpty() ? "" : " (" + overrides.size() + " override(s) applied from " + overridesFile + ")")
                         + (logoDataUri != null ? " (logo embedded from " + logoFile + ")" : "")
@@ -217,7 +221,7 @@ public class Main {
             if (pdfFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
-                new ProtocolBookPdfWriter().withTheme(theme).write(protocols, overrides, labels, loadLogoDataUri(logoFile), bookTitle, pdfFile);
+                new ProtocolBookPdfWriter().withTheme(theme).withPictureFolder(pictureFolder).write(protocols, overrides, labels, loadLogoDataUri(logoFile), bookTitle, pdfFile);
                 System.out.println("Wrote printable protocol book to " + pdfFile.getAbsolutePath());
             }
             if (changesPdfFile != null) {
@@ -281,7 +285,8 @@ public class Main {
         return "data:" + mimeType + ";base64," + base64;
     }
 
-    private static TreeSet<String> collectReconCodes(List<Protocol> protocols, boolean kernels) {
+    /** Every kernel (kernels=true) or scout-plane code used by these protocols' recons, sorted. */
+    public static TreeSet<String> collectReconCodes(List<Protocol> protocols, boolean kernels) {
         TreeSet<String> codes = new TreeSet<String>();
         for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups())
             for (Reconstruction r : g.getReconstructions()) {
@@ -293,7 +298,8 @@ public class Main {
 
     private static final int MAX_SAMPLES_PER_CODE = 5;
 
-    private static Map<String, List<String>> sampleReconNamesByKernelCode(List<Protocol> protocols) {
+    /** Up to five recon names per kernel code, so a code can be recognized without going to the scanner. */
+    public static Map<String, List<String>> sampleReconNamesByKernelCode(List<Protocol> protocols) {
         Map<String, List<String>> samples = new LinkedHashMap<String, List<String>>();
         for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups())
             for (Reconstruction r : g.getReconstructions()) {

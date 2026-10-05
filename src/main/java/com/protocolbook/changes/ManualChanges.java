@@ -108,6 +108,13 @@ public final class ManualChanges {
             Reconstruction r = recon(p, e.getKey());
             add(out, p, "Recon " + e.getKey(), label("sendTo"), r == null ? null : ScannerValues.reconField(r, "sendTo", labels), e.getValue());
         }
+        for (ProtocolOverride.ScanRangePicture pic : o.getScanRangePictures()) {
+            List<String> boxLabels = new ArrayList<String>();
+            for (ProtocolOverride.Box b : pic.getBoxes()) if (b.getLabel() != null && !b.getLabel().trim().isEmpty()) boxLabels.add(b.getLabel().trim());
+            int n = pic.getBoxes().size();
+            add(out, p, "Exam", "Scan range picture", null, pic.getImage() + " \u2014 " + n + " box" + (n == 1 ? "" : "es")
+                    + (boxLabels.isEmpty() ? "" : ": " + String.join(", ", boxLabels)));
+        }
         for (ProtocolOverride.AddedField f : o.getAddedFields()) {
             if (f.isBlank()) continue;
             add(out, p, f.isExam() ? "Exam" : "Series " + f.getSeries().trim(), "Added: " + (f.getTitle() == null ? "" : f.getTitle().trim()), null, f.getValue());
