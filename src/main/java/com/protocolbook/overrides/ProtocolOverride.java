@@ -16,10 +16,16 @@ public class ProtocolOverride {
     private String sendDestination;
     private String contrastVolume;
     private String contrastRate;
+    private String referenceSheet;
+    private String scanRange;
     public String getTitle(){return title;} public void setTitle(String v){title=v;}
     public String getNotes(){return notes;} public void setNotes(String v){notes=v;}
     public boolean isExcluded(){return excluded;} public void setExcluded(boolean v){excluded=v;}
     public String getSendDestination(){return sendDestination;} public void setSendDestination(String v){sendDestination=v;}
     public String getContrastVolume(){return contrastVolume;} public void setContrastVolume(String v){contrastVolume=v;}
     public String getContrastRate(){return contrastRate;} public void setContrastRate(String v){contrastRate=v;}
+    // Which reference-workbook sheet to take the scan range from, when matching by name picks the wrong one or none.
+    public String getReferenceSheet(){return referenceSheet;} public void setReferenceSheet(String v){referenceSheet=v;}
+    // Hand-typed scan range; wins over any reference-workbook sheet.
+    public String getScanRange(){return scanRange;} public void setScanRange(String v){scanRange=v;}
 }

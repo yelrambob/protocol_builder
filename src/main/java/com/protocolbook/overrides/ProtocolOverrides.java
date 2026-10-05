@@ -22,7 +22,9 @@ import java.util.Map;
  *   "9.4": { "excluded": true },
  *   "5.1": { "sendDestination": "AHSPACS + 3D Lab" },
  *   "3.7": { "title": "CT Neck Soft Tissue (renamed)" },
- *   "5.2": { "contrastVolume": "100", "contrastRate": "3.5" }
+ *   "5.2": { "contrastVolume": "100", "contrastRate": "3.5" },
+ *   "8.6": { "referenceSheet": "CT Routine Abd-Pel" },
+ *   "8.7": { "scanRange": "Iliac crests to ischial tuberosities" }
  * }
  *
  * "title" only renames how a protocol displays in the generated book - it never touches the
@@ -36,6 +38,10 @@ import java.util.Map;
  * this protocol's series, in case what the scanner export carries doesn't match actual practice
  * (or a protocol has no injector data captured at all). Either can be set independently; leave
  * the other blank to keep the parsed value for it.
+ *
+ * "referenceSheet" names the reference-workbook sheet (see ReferenceSheets) to take this
+ * protocol's scan range from, for when matching by name picks the wrong sheet or none;
+ * "scanRange" types the scan range in directly and wins over any sheet.
  */
 public final class ProtocolOverrides {
     private ProtocolOverrides() {}
@@ -53,6 +59,8 @@ public final class ProtocolOverrides {
             o.setSendDestination(entry.optString("sendDestination", null));
             o.setContrastVolume(entry.optString("contrastVolume", null));
             o.setContrastRate(entry.optString("contrastRate", null));
+            o.setReferenceSheet(entry.optString("referenceSheet", null));
+            o.setScanRange(entry.optString("scanRange", null));
             out.put(key, o);
         }
         return out;
@@ -72,13 +80,16 @@ public final class ProtocolOverrides {
                     .put("notes", o.getNotes() == null ? "" : o.getNotes()).put("excluded", o.isExcluded())
                     .put("sendDestination", o.getSendDestination() == null ? "" : o.getSendDestination())
                     .put("contrastVolume", o.getContrastVolume() == null ? "" : o.getContrastVolume())
-                    .put("contrastRate", o.getContrastRate() == null ? "" : o.getContrastRate()));
+                    .put("contrastRate", o.getContrastRate() == null ? "" : o.getContrastRate())
+                    .put("referenceSheet", o.getReferenceSheet() == null ? "" : o.getReferenceSheet())
+                    .put("scanRange", o.getScanRange() == null ? "" : o.getScanRange()));
         }
         int added = 0;
         for (String number : protocolNumbers) {
             if (number == null || json.has(number)) continue;
             json.put(number, new JSONObject().put("title", "").put("notes", "").put("excluded", false)
-                    .put("sendDestination", "").put("contrastVolume", "").put("contrastRate", ""));
+                    .put("sendDestination", "").put("contrastVolume", "").put("contrastRate", "")
+                    .put("referenceSheet", "").put("scanRange", ""));
             added++;
         }
         try (FileWriter w = new FileWriter(file)) { w.write(json.toString(2)); }

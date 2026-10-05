@@ -11,3 +11,6 @@ out/
 /protocol data/
 book.html
 peds-weights.html
+
+# Your own one-sheet-per-protocol reference workbooks (scan ranges) - see README.
+/reference workbooks/

@@ -157,17 +157,9 @@ public class ProtocolBookHtmlWriter {
         return total;
     }
 
-    // Primarily by protocol number shape (peds numbers carry an extra dot-separated segment,
-    // e.g. "9.1.2" vs adult's "9.1" - see ProtocolNumbers), falling back to the free-text patient
-    // type for protocols that don't follow that convention (e.g. hand-authored manual protocols).
+    // See ProtocolNumbers.isPediatricProtocol(Protocol) - shared with the reference-workbook scan range matching.
     private String patientBucket(Protocol p) {
-        Metadata m = p.getMetadata();
-        if (ProtocolNumbers.isPediatric(m == null ? null : m.getProtocolNumber())) return "Peds";
-        String type = m == null ? null : m.getPatientType();
-        if (type == null) return "Adult";
-        String t = type.toLowerCase(Locale.ROOT);
-        boolean pediatric = t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
-        return pediatric ? "Peds" : "Adult";
+        return ProtocolNumbers.isPediatricProtocol(p) ? "Peds" : "Adult";
     }
 
     private int bucketRank(String bucket) {
@@ -229,6 +221,13 @@ public class ProtocolBookHtmlWriter {
 
         html.append("<p class=\"meta\">").append(HtmlSupport.esc(m == null ? null : m.getPatientType())).append(" &middot; ")
                 .append(HtmlSupport.esc(m == null ? null : m.getBodyPart())).append("</p>\n");
+
+        String scanRange = p.getPatientSetup() == null ? null : p.getPatientSetup().getScanRange();
+        if (scanRange != null && !scanRange.trim().isEmpty()) {
+            // one line per phase when the phases differ (see ReferenceSheets.Sheet#lines)
+            html.append("<p class=\"scan-range\"><strong>Scan range:</strong> ")
+                    .append(HtmlSupport.esc(scanRange.trim()).replace("\n", "<br>\n")).append("</p>\n");
+        }
 
         ProtocolOverride override = overrides.get(number);
         if (override != null && override.getNotes() != null && !override.getNotes().trim().isEmpty()) {
@@ -432,6 +431,7 @@ public class ProtocolBookHtmlWriter {
             "section.protocol-view h2{color:var(--ahs-blue);margin:0;}" +
             "section.protocol-view h3{color:var(--ahs-blue);margin:1.25rem 0 .25rem;}" +
             ".meta,.dose,.destination{color:#555;font-size:.9rem;}" +
+            ".scan-range{margin:.4rem 0;}" +
             ".notes{background:#fff4e5;border:1px solid var(--ahs-orange);border-radius:6px;padding:.6rem .9rem;margin:.6rem 0;}" +
             ".series{margin:1rem 0 1rem 1rem;padding-left:1rem;border-left:3px solid #dbe7f3;}" +
             "table{border-collapse:collapse;width:100%;margin:.4rem 0 1rem;}" +

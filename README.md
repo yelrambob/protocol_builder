@@ -78,6 +78,7 @@ Main <input> [--json <dir>] [--html <file>] [--peds-weights <file>] [--overrides
              [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
              [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
              [--protocol-images-base <url>] [--protocol-images-ext <ext, default png>]
+             [--reference-workbook <file>]... [--reference-folder <dir>]
              [--init-overrides] [--init-kernel-labels] [--init-plane-labels] [--init-category-labels]
 ```
 
@@ -101,6 +102,8 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--manual-protocols <file>` | Path to hand-authored protocols that don't exist as a folder on the scanner. Defaults to `./manual-protocols.json`; used only if present. Merged in before every output (`--json`/`--html`/`--peds-weights`), not just `--html`. |
 | `--protocol-images-base <url>` | Base URL where per-protocol reference images are hosted, named `<protocolNumber>.<ext>` (e.g. `9.2.png`) — no list to maintain, each protocol page just attempts to load its own image and hides it client-side if that one 404s. Only takes effect together with `--html`. |
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
+| `--reference-workbook <file>` | One of your own one-sheet-per-protocol reference workbooks to take scan ranges from (see [Scan ranges](#scan-ranges-from-your-reference-workbooks)). Repeat for more than one. |
+| `--reference-folder <dir>` | Every `.xlsx`/`.xlsm`/`.xls` in this folder is used as a reference workbook too. Defaults to `./reference workbooks`; used only if present. |
 | `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed. Never touches existing entries. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
@@ -130,7 +133,9 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
   "9.4":  { "excluded": true },
   "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
   "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
-  "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" }
+  "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" },
+  "8.6":  { "referenceSheet": "CT Routine Abd-Pel" },
+  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" }
 }
 ```
 
@@ -139,8 +144,10 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `excluded` — when `true`, the protocol is left out of the generated HTML book entirely (still counted in the console summary and JSON output).
 - `sendDestination` — where images from this protocol are routed; not reliably derivable from the export (session.xml logs what actually ran for one historical scan, not what the protocol template always does), so it's stated here by hand.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
+- `referenceSheet` — the reference-workbook sheet to take this protocol's scan range from, when matching by name picks the wrong one or none (exact sheet name, case-insensitive).
+- `scanRange` — type the scan range in directly; wins over any reference workbook.
 
-`--init-overrides` scaffolds every protocol number here with all six fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all eight fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 
@@ -201,6 +208,24 @@ Kernel labels file kernel-labels.json: added 3 new code(s) - fill in the "" valu
     - AXIAL BONE
     - AXIAL BONE+
 ```
+
+## Scan ranges from your reference workbooks
+
+The scan range (e.g. "Diaphragm to Ischial Tuberosities") isn't in the scanner export at all, so the book takes it from the site's own reference workbooks: one sheet per protocol, labels in column A, and a `Scan Range/Direction` row with one column per phase under a `Phase` row (the layout of `AMG_CT_Protocols_Adult.xlsm` / `AMG_Protocols_PEDS.xlsx`). Put the workbooks in a `reference workbooks` folder next to the `.bat` files (not tracked by git, like `protocol data`) and every run picks them up; no extra arguments are needed.
+
+Those sheets have no protocol numbers, so each scanner protocol is matched to a sheet by name: abbreviations are expanded (`LWR EXT` = `Lower Ext.`, `CERVICAL SPINE` = `C-spine`, `ABD/PEL` = `Abd-Pel`), contrast wording and "Routine"/"PEDS" are ignored, and the closest sheet wins only if it's a clear winner. Adult protocols only match sheets in the adult workbook, and peds only the PEDS one (a workbook or sheet with "PEDS" in its name). A sheet whose phases all share one range shows it once; otherwise each phase is listed.
+
+Every run prints which sheet each protocol got and which got none:
+
+```
+Scan ranges from 79 reference sheet(s): 11 protocol(s) matched, 1 without one
+  9.2 CT LWR EXT KNEE WITH CONTRAST  <-  AMG_CT_Protocols_Adult.xlsm > CT Lower Ext. Knee
+  ...
+No scan range found for (set "referenceSheet" or "scanRange" in protocol-overrides.json):
+  8.6 CT BONY PELVIS WITH CONTRAST
+```
+
+Fix a wrong or missing match with `referenceSheet` (name the sheet) or `scanRange` (type it) in `protocol-overrides.json`.
 
 ## Output formats
 

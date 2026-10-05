@@ -1,5 +1,10 @@
 package com.protocolbook.html;
 
+import com.protocolbook.model.Metadata;
+import com.protocolbook.model.Protocol;
+
+import java.util.Locale;
+
 /**
  * Shared protocol-number helpers used by both {@link ProtocolBookHtmlWriter} and
  * {@link PediatricWeightSheetWriter}.
@@ -9,8 +14,22 @@ package com.protocolbook.html;
  * more reliable Adult/Peds signal than the free-text patient-type field, which doesn't
  * consistently spell out "pediatric" in real exports.
  */
-final class ProtocolNumbers {
+public final class ProtocolNumbers {
     private ProtocolNumbers() {}
+
+    /**
+     * Adult/Peds for a whole protocol: primarily by number shape (see above), falling back to the
+     * free-text patient type for protocols that don't follow that convention (e.g. hand-authored
+     * manual protocols).
+     */
+    public static boolean isPediatricProtocol(Protocol p) {
+        Metadata m = p.getMetadata();
+        if (isPediatric(m == null ? null : m.getProtocolNumber())) return true;
+        String type = m == null ? null : m.getPatientType();
+        if (type == null) return false;
+        String t = type.toLowerCase(Locale.ROOT);
+        return t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
+    }
 
     static boolean isPediatric(String number) {
         if (number == null) return false;
