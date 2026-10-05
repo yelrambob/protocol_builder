@@ -148,6 +148,23 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `sendDestination` — where images from this protocol are routed, typed by hand. Optional: without it, the book shows an "Auto-sends to:" line built from the auto-send hosts in the export (see below). Set it when you want to word the destination yourself or list a destination the scanner doesn't auto-send to.
 
 **Auto-send hosts** are read straight from the export: in `session.xml`, each recon and reformat has an `AutoJobTask` naming one `CTJobHost` per destination (e.g. `AHSPACS`, `RAPID 1`). They show per recon in the book's "Auto-send" column and as `sendDestinations` in the JSON. A blank cell means that recon isn't auto-sent (e.g. "by request only" MAR recons). Dose-report hosts (`DOSESC#...`/`DOSESR#...`) are left out.
+- **Any parameter the book shows can be overridden.** What you type replaces the scanner's value in the HTML book and PDF; it's shown bold with a dotted underline (hover in the HTML book to see the scanner's own value), and the page gets a one-line note saying values were set by hand. Values are text, shown exactly as typed.
+  - `series` — acquisition settings, by series number as shown in the book (`"1"` is usually the scouts, `"2"` the first scan): `kv`, `ma` (e.g. `"100-635"`), `noiseIndex`, `pitch` (`"0.984"` shows as `0.984:1`), `rotationTime`, `ctdi`. On a scout series only `kv` and `ma` are shown.
+  - `recons` — per recon, by recon name as shown in the book (case and extra spaces don't matter): `name` (renames the row), `thickness`, `interval`, `kernel` (shown exactly as typed, e.g. `"Bone"`), `asir` (e.g. `"40%"`), `wwwl` (e.g. `"400/40"`), `sendTo` (every host, comma-separated - same as `reconSendDestinations`).
+  - `contrastDelay` (seconds, e.g. `"90"`), `examCtdi`, `examDlp` — alongside the existing `contrastVolume` / `contrastRate`.
+  - A recon name or series number that matches nothing, or a field name that isn't one of the above (e.g. `kvp` instead of `kv`), prints a `WARN:` line when the book is built, so a typo never silently does nothing.
+
+  ```json
+  "9.2": {
+    "protocolName": "CT LWR EXT KNEE WITH CONTRAST",
+    "contrastDelay": "90",
+    "series": { "2": { "kv": "120", "pitch": "0.984" } },
+    "recons": {
+      "AXIAL KNEE DET 2.5MM": { "kernel": "Bone", "wwwl": "400/40" },
+      "CORONAL KNEE DET 2.5MM": { "wwwl": "2000/500", "sendTo": "AHSPACS" }
+    }
+  }
+  ```
 - `threeD` — controls the **3D MIP** and **3D VR** series added at the bottom of a protocol's page, each listing a 10° rotation and a separate 10° tumble. They appear automatically for any protocol that sends to AW Server: any auto-send host (including ones typed in `reconSendDestinations`) or `sendDestination` text with "AW" at the start of a word, e.g. `AW`, `AWSERVER`, `AW_SERVER1`, `AW Server`. Set `"threeD": true` to add them to a protocol that doesn't match, or `"threeD": false` to leave them off one that does.
 - `protocolName` — filled in by `--init-overrides` with the protocol's name on the scanner, so you can find a protocol in this file by searching for its name (Ctrl+F) instead of knowing its number. It's only a label: it's refreshed on every `--init-overrides` run and never read back, so editing it does nothing. Use `title` to rename a protocol in the book.
 - `reconSendDestinations` — corrects the auto-send hosts for individual recons when the export lists fewer than the scanner really sends to (e.g. a stroke CTA that also goes to `RAPID 1`). Key each recon by its name as shown in the book (case and extra spaces don't matter) and list **every** host, comma-separated: the typed list replaces what the export says for that recon. Recons you don't name keep the exported hosts, and the "Auto-sends to:" header line includes the typed hosts. A name that matches no recon in that protocol prints a `WARN:` line when the book is built, so typos don't slip by. `--init-overrides` never removes these entries.

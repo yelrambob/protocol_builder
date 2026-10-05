@@ -1,9 +1,6 @@
 package com.protocolbook.overrides;
 
-import com.protocolbook.model.Group;
 import com.protocolbook.model.Protocol;
-import com.protocolbook.model.Reconstruction;
-import com.protocolbook.model.Series;
 import org.json.JSONObject;
 
 import com.protocolbook.html.ProtocolNumbers;
@@ -86,6 +83,11 @@ public final class ProtocolOverrides {
             o.setReferenceSheet(entry.optString("referenceSheet", null));
             o.setScanRange(entry.optString("scanRange", null));
             if (entry.has("threeD") && !entry.isNull("threeD") && !"".equals(entry.opt("threeD"))) o.setThreeD(entry.optBoolean("threeD"));
+            o.setContrastDelay(entry.optString("contrastDelay", null));
+            o.setExamCtdi(entry.optString("examCtdi", null));
+            o.setExamDlp(entry.optString("examDlp", null));
+            readNested(entry.optJSONObject("recons"), o.getRecons());
+            readNested(entry.optJSONObject("series"), o.getSeries());
             JSONObject reconSends = entry.optJSONObject("reconSendDestinations");
             if (reconSends != null) for (String recon : reconSends.keySet()) o.getReconSendDestinations().put(recon, reconSends.optString(recon, ""));
             out.put(key, o);
@@ -93,24 +95,33 @@ public final class ProtocolOverrides {
         return out;
     }
 
-    /** One line per reconSendDestinations recon name that matches no recon in its protocol, so a typo doesn't go unnoticed. */
-    public static List<String> unmatchedReconNames(List<Protocol> protocols, Map<String, ProtocolOverride> overrides) {
+    // { "AXIAL KNEE DET 2.5MM": { "kernel": "Bone", "wwwl": "400/40" } } -> name -> field -> value (numbers kept as typed).
+    private static void readNested(JSONObject json, Map<String, Map<String, String>> into) {
+        if (json == null) return;
+        for (String key : json.keySet()) {
+            JSONObject fields = json.optJSONObject(key);
+            if (fields == null) continue;
+            Map<String, String> values = new LinkedHashMap<String, String>();
+            for (String field : fields.keySet()) values.put(field, fields.isNull(field) ? "" : String.valueOf(fields.get(field)));
+            into.put(key, values);
+        }
+    }
+
+    /** One line per typed recon name / series number / field name that matches nothing, so a typo doesn't go unnoticed. */
+    public static List<String> problems(List<Protocol> protocols, Map<String, ProtocolOverride> overrides) {
         List<String> out = new ArrayList<String>();
         for (Protocol p : protocols) {
             String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
             ProtocolOverride o = number == null ? null : overrides.get(number);
-            if (o == null || o.getReconSendDestinations().isEmpty()) continue;
-            List<Reconstruction> recons = new ArrayList<Reconstruction>();
-            for (Series s : p.getSeries()) for (Group g : s.getGroups()) recons.addAll(g.getReconstructions());
-            for (String name : o.unmatchedReconNames(recons))
-                out.add("protocol " + number + " reconSendDestinations: no recon named '" + name + "' - check the spelling against the book");
+            if (o == null) continue;
+            for (String problem : o.problems(p.getSeries())) out.add("protocol " + number + " " + problem);
         }
         return out;
     }
 
     // Fields in the order they're written, so every entry reads the same top to bottom; any other key follows these.
     private static final List<String> FIELD_ORDER = Arrays.asList("protocolName", "title", "notes", "excluded", "sendDestination",
-            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "reconSendDestinations", "threeD");
+            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "contrastDelay", "examCtdi", "examDlp", "series", "recons", "reconSendDestinations", "threeD");
 
     /**
      * Adds an empty entry for any protocol number not already present in the file (creating the file

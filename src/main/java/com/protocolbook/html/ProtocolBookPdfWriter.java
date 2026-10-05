@@ -128,5 +128,7 @@ public class ProtocolBookPdfWriter {
             "th,td{border:1px solid #ccd5df;padding:2px 5px;text-align:left;font-size:8.5pt;}" +
             "th{background:" + BLUE + ";color:#fff;}" +
             "tr.reformat td{color:#555;font-style:italic;}" +
-            "tr.reformat td:first-child{padding-left:14px;}";
+            "tr.reformat td:first-child{padding-left:14px;}" +
+            ".override{border-bottom:1px dotted #000;font-weight:bold;}" +
+            ".override-note{font-size:7.5pt;color:#555;}";
 }
