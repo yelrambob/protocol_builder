@@ -122,8 +122,10 @@ class ProtocolBookHtmlWriterTest {
         assertTrue(coronalRow > 0);
         assertTrue(html.substring(coronalRow, coronalRow + 200).contains(">STD<"), "reformat row should show the inherited/mapped kernel");
 
-        assertTrue(html.contains("<th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th>"),
-                "the recon table should have an ASIR column alongside Kernel");
+        assertTrue(html.contains("<th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th>"),
+                "the recon table should have ASIR and WW/WL columns alongside Kernel");
+        assertTrue(html.contains(">1500/250<"), "each recon row should show its window width/level");
+        assertTrue(html.substring(coronalRow, coronalRow + 300).contains(">350/30<"), "reformat rows should show their own WW/WL from session.xml");
         assertTrue(html.contains(">50%<"), "iterativeConfig code AR50 should map to 50% ASIR");
     }
 
