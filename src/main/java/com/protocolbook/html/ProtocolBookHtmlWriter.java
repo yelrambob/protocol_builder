@@ -318,14 +318,22 @@ public class ProtocolBookHtmlWriter {
         else if (a.getPitch() != null) html.append(" &middot; pitch ").append(HtmlSupport.esc(a.getPitch()));
         if (a.getRotationTime() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getRotationTime())).append(" s rotation");
         if (g.ctdi(true) != null) html.append(" &middot; CTDIvol ").append(HtmlSupport.esc(doseRange(g.ctdi(false), g.ctdi(true)))).append(" mGy");
-        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th></tr>\n");
+        html.append("</p>\n<table class=\"recons\">\n<tr><th>Recon</th><th>Thickness</th><th>Interval</th><th>Kernel</th><th>ASIR</th><th>WW/WL</th></tr>\n");
         for (Reconstruction r : g.getReconstructions()) {
             html.append("<tr").append(r.isDerived() ? " class=\"reformat\"" : "").append("><td>").append(HtmlSupport.esc(r.getName()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getThickness()))
                     .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel())))
-                    .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig()))).append("</td></tr>\n");
+                    .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig())))
+                    .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r))).append("</td></tr>\n");
         }
         html.append("</table>\n");
+    }
+
+    // Display window as "width/level" (e.g. "1500/250"), the order it's dialed in at the console.
+    private static String windowWidthLevel(Reconstruction r) {
+        String ww = r.getWindowWidth(), wl = r.getWindowLevel();
+        if (ww == null && wl == null) return null;
+        return (ww != null ? ww : "?") + "/" + (wl != null ? wl : "?");
     }
 
     // "Protocol with contrast - 70 sec contrast delay": the delay is the first diagnostic group's
