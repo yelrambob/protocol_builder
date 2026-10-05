@@ -308,6 +308,19 @@ sudo dpkg-reconfigure ca-certificates-java
 
 then re-run `./gradlew`.
 
+On **Windows** (typically a hospital/corporate network that inspects HTTPS traffic), Java doesn't trust the network's inspection certificate even though Windows and your browser do. The helper `.bat` scripts already handle this by telling Java to use the Windows certificate store (`-Djavax.net.ssl.trustStoreType=Windows-ROOT`). If you call `gradlew.bat` directly, do the same:
+
+```bat
+set GRADLE_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT
+gradlew.bat -Djavax.net.ssl.trustStoreType=Windows-ROOT run --args="..."
+```
+
+If it still fails, ask IT for the network's root certificate and import it into the JDK's `cacerts` with `keytool -importcert`.
+
+### "Input not found"
+
+The helper scripts default to a `protocol data` folder next to them, which git doesn't track, so it won't exist on a fresh checkout. Create it and copy your exported protocol folders in, or drag-and-drop your export folder onto the `.bat` file.
+
 ### "No protocol worksheets were detected" / "No protocol folders found"
 
 - For a workbook: the tool only recognizes sheets whose name or cell contents mention protocol-ish terms (protocol, scan type, kV, mAs, pitch, series, recon, patient position, contrast, CTDI, DLP) and that have at least a handful of populated cells. A workbook that's all cover pages/instructions/lookup tables (or password-protected — see the "workbook is password protected" error) will report zero protocols. Save an unprotected copy if needed, and check that the actual data sheets aren't named/organized in a way that trips the "cover/instructions/contents/index/lookup/config/template" name-based skip.
