@@ -154,10 +154,11 @@ public class Main {
             }
 
             if (initOverrides) {
-                List<String> numbers = new ArrayList<String>();
-                for (Protocol p : protocols) if (p.getMetadata() != null) numbers.add(p.getMetadata().getProtocolNumber());
-                int added = ProtocolOverrides.mergeTemplate(numbers, overridesFile);
-                System.out.println("Overrides file " + overridesFile.getAbsolutePath() + ": added " + added + " new protocol(s), existing entries left untouched");
+                Map<String, String> names = new LinkedHashMap<String, String>();
+                for (Protocol p : protocols) if (p.getMetadata() != null) names.put(p.getMetadata().getProtocolNumber(), p.getMetadata().getName());
+                int added = ProtocolOverrides.mergeTemplate(names, overridesFile);
+                System.out.println("Overrides file " + overridesFile.getAbsolutePath() + ": added " + added
+                        + " new protocol(s), protocol names refreshed, sorted by number; existing settings left untouched");
             }
             if (initKernelLabels) {
                 int added = CodeLabels.mergeTemplate(new ArrayList<String>(collectReconCodes(protocols, true)), kernelLabelsFile);

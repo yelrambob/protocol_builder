@@ -106,7 +106,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
 | `--reference-workbook <file>` | One of your own one-sheet-per-protocol reference workbooks to take scan ranges from (see [Scan ranges](#scan-ranges-from-your-reference-workbooks)). Repeat for more than one. |
 | `--reference-folder <dir>` | Every `.xlsx`/`.xlsm`/`.xls` in this folder is used as a reference workbook too. Defaults to `./reference workbooks`; used only if present. |
-| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed. Never touches existing entries. |
+| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed, label every entry with its scanner protocol name (`protocolName`), and rewrite the file sorted by protocol number. Settings you've already typed are never changed. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
 | `--init-category-labels` | Add an entry to the category-labels file for every distinct protocol-number prefix found that isn't already listed. |
@@ -131,7 +131,7 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 
 ```json
 {
-  "9.2":  { "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
+  "9.2":  { "protocolName": "CT LWR EXT KNEE WITH CONTRAST", "notes": "Have the patient bend the knee slightly for...", "excluded": false, "sendDestination": "" },
   "9.4":  { "excluded": true },
   "5.1":  { "sendDestination": "AHSPACS + 3D Lab" },
   "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
@@ -148,12 +148,13 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `sendDestination` — where images from this protocol are routed, typed by hand. Optional: without it, the book shows an "Auto-sends to:" line built from the auto-send hosts in the export (see below). Set it when you want to word the destination yourself or list a destination the scanner doesn't auto-send to.
 
 **Auto-send hosts** are read straight from the export: in `session.xml`, each recon and reformat has an `AutoJobTask` naming one `CTJobHost` per destination (e.g. `AHSPACS`, `RAPID 1`). They show per recon in the book's "Auto-send" column and as `sendDestinations` in the JSON. A blank cell means that recon isn't auto-sent (e.g. "by request only" MAR recons). Dose-report hosts (`DOSESC#...`/`DOSESR#...`) are left out.
+- `protocolName` — filled in by `--init-overrides` with the protocol's name on the scanner, so you can find a protocol in this file by searching for its name (Ctrl+F) instead of knowing its number. It's only a label: it's refreshed on every `--init-overrides` run and never read back, so editing it does nothing. Use `title` to rename a protocol in the book.
 - `reconSendDestinations` — corrects the auto-send hosts for individual recons when the export lists fewer than the scanner really sends to (e.g. a stroke CTA that also goes to `RAPID 1`). Key each recon by its name as shown in the book (case and extra spaces don't matter) and list **every** host, comma-separated: the typed list replaces what the export says for that recon. Recons you don't name keep the exported hosts, and the "Auto-sends to:" header line includes the typed hosts. A name that matches no recon in that protocol prints a `WARN:` line when the book is built, so typos don't slip by. `--init-overrides` never removes these entries.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
 - `referenceSheet` — the reference-workbook sheet to take this protocol's scan range from, when matching by name picks the wrong one or none (exact sheet name, case-insensitive).
 - `scanRange` — type the scan range in directly; wins over any reference workbook.
 
-`--init-overrides` scaffolds every protocol number here with all eight fields blank, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
+`--init-overrides` scaffolds every protocol number here with all eight fields blank and its `protocolName`, in protocol-number order, so renaming, excluding, or correcting a protocol's contrast values is a matter of finding its number in this one file and editing a value — no new tooling needed. Only used when `--html` is passed; ignored otherwise.
 
 ### `kernel-labels.json`, `plane-labels.json`, `category-labels.json` — code → label lookups
 

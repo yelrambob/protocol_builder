@@ -42,7 +42,7 @@ public final class ProtocolNumbers {
     // so this works the same for the usual two-segment adult numbers and the three-segment
     // pediatric ones without one throwing off the other's ordering. A number that can't be
     // parsed this way (missing, or non-numeric segments) sorts last.
-    static int compare(String a, String b) {
+    public static int compare(String a, String b) {
         int[] sa = segments(a);
         int[] sb = segments(b);
         if (sa == null && sb == null) return 0;

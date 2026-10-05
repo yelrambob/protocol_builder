@@ -6,12 +6,18 @@ import com.protocolbook.model.Reconstruction;
 import com.protocolbook.model.Series;
 import org.json.JSONObject;
 
+import com.protocolbook.html.ProtocolNumbers;
+
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +30,7 @@ import java.util.Map;
  *
  * File format:
  * {
- *   "9.2": { "notes": "Have the patient bend the knee slightly for..." },
+ *   "9.2": { "protocolName": "CT LWR EXT KNEE WITH CONTRAST", "notes": "Have the patient bend the knee slightly for..." },
  *   "9.4": { "excluded": true },
  *   "5.1": { "sendDestination": "AHSPACS + 3D Lab" },
  *   "3.7": { "title": "CT Neck Soft Tissue (renamed)" },
@@ -49,6 +55,9 @@ import java.util.Map;
  * "referenceSheet" names the reference-workbook sheet (see ReferenceSheets) to take this
  * protocol's scan range from, for when matching by name picks the wrong sheet or none;
  * "scanRange" types the scan range in directly and wins over any sheet.
+ *
+ * "protocolName" is filled in by --init-overrides from the scanner name, purely so the file can be
+ * searched by name; it's never read back (use "title" to rename).
  *
  * "reconSendDestinations" replaces the auto-send hosts shown for individual recons, by recon name
  * (as shown in the book; case and repeated spaces don't matter). The typed list replaces the
@@ -94,24 +103,70 @@ public final class ProtocolOverrides {
         return out;
     }
 
+    // Fields in the order they're written, so every entry reads the same top to bottom; any other key follows these.
+    private static final List<String> FIELD_ORDER = Arrays.asList("protocolName", "title", "notes", "excluded", "sendDestination",
+            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "reconSendDestinations");
+
     /**
-     * Adds an empty entry for any of the given protocol numbers not already present in the file
-     * (creating the file if it doesn't exist yet). Existing entries - and everything already set
-     * on them - are left untouched. Returns how many new entries were added.
+     * Adds an empty entry for any protocol number not already present in the file (creating the file
+     * if it doesn't exist yet), and sets "protocolName" on every entry to that protocol's scanner name
+     * so the file can be searched by name. protocolName is only a label - it's never read back; use
+     * "title" to rename a protocol in the book. Everything else on existing entries is left untouched,
+     * entries for numbers no longer on the scanner are kept, and the file is written sorted by protocol
+     * number. Returns how many new entries were added.
      */
-    public static int mergeTemplate(java.util.List<String> protocolNumbers, File file) throws IOException {
-        // existing entries are carried over as-is, so fields this method doesn't scaffold (e.g. reconSendDestinations) survive
+    public static int mergeTemplate(Map<String, String> protocolNames, File file) throws IOException {
         JSONObject json = file.isFile()
                 ? new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)) : new JSONObject();
         int added = 0;
-        for (String number : protocolNumbers) {
-            if (number == null || json.has(number)) continue;
-            json.put(number, new JSONObject().put("title", "").put("notes", "").put("excluded", false)
-                    .put("sendDestination", "").put("contrastVolume", "").put("contrastRate", "")
-                    .put("referenceSheet", "").put("scanRange", ""));
-            added++;
+        for (Map.Entry<String, String> e : protocolNames.entrySet()) {
+            String number = e.getKey();
+            if (number == null) continue;
+            if (!json.has(number)) {
+                json.put(number, new JSONObject().put("title", "").put("notes", "").put("excluded", false)
+                        .put("sendDestination", "").put("contrastVolume", "").put("contrastRate", "")
+                        .put("referenceSheet", "").put("scanRange", ""));
+                added++;
+            }
+            if (e.getValue() != null) json.getJSONObject(number).put("protocolName", e.getValue());
         }
-        try (FileWriter w = new FileWriter(file)) { w.write(json.toString(2)); }
+        try (Writer w = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8)) { w.write(sortedJson(json)); }
         return added;
+    }
+
+    // org.json doesn't keep key order, so the file is written by hand: entries by protocol number,
+    // fields in FIELD_ORDER.
+    static String sortedJson(JSONObject json) {
+        List<String> numbers = new ArrayList<String>(json.keySet());
+        numbers.sort((a, b) -> {
+            int cmp = ProtocolNumbers.compare(a, b);
+            return cmp != 0 ? cmp : a.compareTo(b);
+        });
+        StringBuilder out = new StringBuilder("{\n");
+        for (int i = 0; i < numbers.size(); i++) {
+            String number = numbers.get(i);
+            out.append("  ").append(JSONObject.quote(number)).append(": ");
+            JSONObject entry = json.optJSONObject(number);
+            if (entry == null) out.append(JSONObject.valueToString(json.get(number)));
+            else {
+                List<String> keys = new ArrayList<String>();
+                for (String k : FIELD_ORDER) if (entry.has(k)) keys.add(k);
+                List<String> rest = new ArrayList<String>(entry.keySet());
+                rest.removeAll(FIELD_ORDER);
+                Collections.sort(rest);
+                keys.addAll(rest);
+                out.append("{\n");
+                for (int k = 0; k < keys.size(); k++) {
+                    Object value = entry.get(keys.get(k));
+                    String rendered = value instanceof JSONObject ? ((JSONObject) value).toString(2).replace("\n", "\n    ")
+                            : JSONObject.valueToString(value);
+                    out.append("    ").append(JSONObject.quote(keys.get(k))).append(": ").append(rendered)
+                            .append(k < keys.size() - 1 ? ",\n" : "\n");
+                }
+                out.append("  }");
+            }
+            out.append(i < numbers.size() - 1 ? ",\n" : "\n");
+        }
+        return out.append("}\n").toString();
     }
 }
