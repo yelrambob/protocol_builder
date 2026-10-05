@@ -254,7 +254,7 @@ class ProtocolBookHtmlWriterTest {
         new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
         String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
 
-        assertTrue(html.contains("IV contrast: 125 mL @ 4.0 mL/s"), "contrastVolume/contrastRate overrides should replace the parsed IV volume/flow rate");
+        assertTrue(html.contains("Contrast Dose: 125 mL<br>\nInjection rate: 4.0 mL/s"), "contrastVolume/contrastRate overrides should replace the parsed IV volume/flow rate");
     }
 
     @Test void doesNotRenderADetectorLine(@TempDir Path tempDir) throws Exception {
@@ -543,7 +543,9 @@ class ProtocolBookHtmlWriterTest {
 
     @Test void showsContrastProtocolWithItsContrastDelay(@TempDir Path tempDir) throws Exception {
         String html = render(new ProtocolFolderWalker().parse(FIXTURE_ROOT), tempDir);
-        assertTrue(html.contains("Protocol with contrast &middot; 70 sec contrast delay"), "groupDelay=70.0 should read as a 70 sec contrast delay");
+        assertTrue(html.contains("<strong>When ordered with contrast:</strong><br>\nContrast Dose: 100 mL<br>\nInjection rate: 2.0 mL/s<br>\nDelay timing: 70 sec</p>"),
+                "groupDelay=70.0 should read as a 70 sec delay under the contrast dose");
+        assertFalse(html.contains("Protocol with contrast"));
     }
 
     @Test void nonContrastSeriesSaysSo(@TempDir Path tempDir) throws Exception {
@@ -551,7 +553,7 @@ class ProtocolBookHtmlWriterTest {
         for (Protocol p : protocols) for (Series s : p.getSeries()) s.getContrast().setIv(false);
         String html = render(protocols, tempDir);
         assertTrue(html.contains("Protocol without contrast &middot; 70 sec scan delay"));
-        assertFalse(html.contains("Protocol with contrast"));
+        assertFalse(html.contains("When ordered with contrast"));
     }
 
     @Test void pedsProtocolsAreAlphabeticalWhileAdultStaysInNumberOrder(@TempDir Path tempDir) throws Exception {

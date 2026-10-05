@@ -281,18 +281,7 @@ public class ProtocolBookHtmlWriter {
                 .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
-        // contrastVolume/contrastRate overrides let a person correct what's shown here without
-        // needing to touch the underlying scanner export.
-        if (!scout && s.getContrast() != null && s.getContrast().isIv()) {
-            String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
-                    ? override.getContrastVolume() : s.getContrast().getIvVolume();
-            String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
-                    ? override.getContrastRate() : s.getContrast().getFlowRate();
-            html.append("<p class=\"contrast\">IV contrast: ").append(HtmlSupport.esc(volume)).append(" mL");
-            if (rate != null) html.append(" @ ").append(HtmlSupport.esc(rate)).append(" mL/s");
-            html.append("</p>\n");
-        }
-        if (!scout) appendContrastTiming(html, s);
+        if (!scout) appendContrast(html, s, override);
         if (scout) appendScoutTable(html, s, labels);
         else for (Group g : s.getGroups()) appendGroup(html, g, labels, override);
         html.append("</div>\n");
@@ -375,9 +364,10 @@ public class ProtocolBookHtmlWriter {
         return (ww != null ? ww : "?") + "/" + (wl != null ? wl : "?");
     }
 
-    // "Protocol with contrast - 70 sec contrast delay": the delay is the first diagnostic group's
-    // groupDelay, i.e. seconds from the start of the series (the injection) to the scan.
-    private void appendContrastTiming(StringBuilder html, Series s) {
+    // Contrast series: a "When ordered with contrast:" block with the dose, injection rate and delay
+    // timing. The delay is the first diagnostic group's groupDelay, i.e. seconds from the start of
+    // the series (the injection) to the scan. Non-contrast series keep a one-line note.
+    private void appendContrast(StringBuilder html, Series s, ProtocolOverride override) {
         boolean contrast = s.getContrast() != null && s.getContrast().isIv();
         String delay = null;
         for (Group g : s.getGroups()) {
@@ -386,11 +376,25 @@ public class ProtocolBookHtmlWriter {
         }
         Double seconds = null;
         try { if (delay != null) seconds = Double.valueOf(delay); } catch (NumberFormatException ignored) {}
-        html.append("<p class=\"contrast\">").append(contrast ? "Protocol with contrast" : "Protocol without contrast");
-        if (seconds != null && seconds > 0) {
-            html.append(" &middot; ").append(HtmlSupport.esc(seconds % 1 == 0 ? String.valueOf(seconds.longValue()) : String.valueOf(seconds)))
-                    .append(" sec ").append(contrast ? "contrast delay" : "scan delay");
+        String delayText = seconds != null && seconds > 0
+                ? (seconds % 1 == 0 ? String.valueOf(seconds.longValue()) : String.valueOf(seconds)) + " sec" : null;
+
+        if (!contrast) {
+            html.append("<p class=\"contrast\">Protocol without contrast");
+            if (delayText != null) html.append(" &middot; ").append(HtmlSupport.esc(delayText)).append(" scan delay");
+            html.append("</p>\n");
+            return;
         }
+        // contrastVolume/contrastRate overrides let a person correct what's shown here without
+        // needing to touch the underlying scanner export.
+        String volume = override != null && override.getContrastVolume() != null && !override.getContrastVolume().trim().isEmpty()
+                ? override.getContrastVolume() : s.getContrast().getIvVolume();
+        String rate = override != null && override.getContrastRate() != null && !override.getContrastRate().trim().isEmpty()
+                ? override.getContrastRate() : s.getContrast().getFlowRate();
+        html.append("<p class=\"contrast\"><strong>When ordered with contrast:</strong>");
+        if (volume != null) html.append("<br>\nContrast Dose: ").append(HtmlSupport.esc(volume)).append(" mL");
+        if (rate != null) html.append("<br>\nInjection rate: ").append(HtmlSupport.esc(rate)).append(" mL/s");
+        if (delayText != null) html.append("<br>\nDelay timing: ").append(HtmlSupport.esc(delayText));
         html.append("</p>\n");
     }
 
