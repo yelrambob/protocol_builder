@@ -106,7 +106,7 @@ Because this is a Gradle `application` project, every invocation goes through `.
 | `--protocol-images-ext <ext>` | File extension used with `--protocol-images-base`. Defaults to `png`. |
 | `--reference-workbook <file>` | One of your own one-sheet-per-protocol reference workbooks to take scan ranges from (see [Scan ranges](#scan-ranges-from-your-reference-workbooks)). Repeat for more than one. |
 | `--reference-folder <dir>` | Every `.xlsx`/`.xlsm`/`.xls` in this folder is used as a reference workbook too. Defaults to `./reference workbooks`; used only if present. |
-| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed, label every entry with its scanner protocol name (`protocolName`), and rewrite the file sorted by protocol number. Settings you've already typed are never changed. |
+| `--init-overrides` | Add an empty entry to the overrides file for every protocol number found that isn't already listed, label every entry with its scanner protocol name (`protocolName`), and rewrite the file sorted by protocol number. Settings you've already typed (notes, `excluded`, titles, send destinations, ...) are never changed, and entries for protocols no longer on the scanner are kept. The previous file is saved as `protocol-overrides.json.bak` first. |
 | `--init-kernel-labels` | Add an empty entry to the kernel-labels file for every recon kernel code found that isn't already listed. |
 | `--init-plane-labels` | Add an empty entry to the plane-labels file for every scout plane code found that isn't already listed. |
 | `--init-category-labels` | Add an entry to the category-labels file for every distinct protocol-number prefix found that isn't already listed. |

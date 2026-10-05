@@ -72,6 +72,8 @@ class ProtocolOverridesTest {
         Map<String, ProtocolOverride> after = ProtocolOverrides.load(file);
         assertEquals("keep me", after.get("9.10").getNotes(), "existing settings survive");
         assertTrue(after.get("99.1").isExcluded(), "entries for numbers no longer on the scanner are kept");
+        assertTrue(new File(file.getPath() + ".bak").isFile(), "the previous version is kept as a backup");
+        assertTrue(new String(java.nio.file.Files.readAllBytes(new File(file.getPath() + ".bak").toPath())).contains("keep me"));
         assertNull(after.get("9.10").getTitle() == null || after.get("9.10").getTitle().isEmpty() ? null : "x", "protocolName must not become a title override");
     }
 

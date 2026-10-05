@@ -16,3 +16,6 @@ peds-weights.html
 /reference workbooks/
 book.pdf
 duplicates.html
+
+# Backup written by --init-overrides before it rewrites the overrides file.
+*.bak
