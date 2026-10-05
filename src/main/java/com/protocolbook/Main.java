@@ -281,7 +281,8 @@ public class Main {
         return "data:" + mimeType + ";base64," + base64;
     }
 
-    private static TreeSet<String> collectReconCodes(List<Protocol> protocols, boolean kernels) {
+    /** Every kernel (kernels=true) or scout-plane code used by these protocols' recons, sorted. */
+    public static TreeSet<String> collectReconCodes(List<Protocol> protocols, boolean kernels) {
         TreeSet<String> codes = new TreeSet<String>();
         for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups())
             for (Reconstruction r : g.getReconstructions()) {
@@ -293,7 +294,8 @@ public class Main {
 
     private static final int MAX_SAMPLES_PER_CODE = 5;
 
-    private static Map<String, List<String>> sampleReconNamesByKernelCode(List<Protocol> protocols) {
+    /** Up to five recon names per kernel code, so a code can be recognized without going to the scanner. */
+    public static Map<String, List<String>> sampleReconNamesByKernelCode(List<Protocol> protocols) {
         Map<String, List<String>> samples = new LinkedHashMap<String, List<String>>();
         for (Protocol p : protocols) for (Series s : p.getSeries()) for (Group g : s.getGroups())
             for (Reconstruction r : g.getReconstructions()) {

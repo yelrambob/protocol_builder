@@ -30,6 +30,28 @@ public final class CodeLabels {
         return out;
     }
 
+    /**
+     * Writes the whole lookup, codes in numeric order (text codes after), keeping the previous file as
+     * &lt;file&gt;.bak - what the GUI's "Kernel names" screen saves.
+     */
+    public static void save(Map<String, String> labels, File file) throws IOException {
+        java.util.List<String> codes = new java.util.ArrayList<String>(labels.keySet());
+        codes.sort((a, b) -> {
+            boolean na = a.matches("\\d+"), nb = b.matches("\\d+");
+            if (na && nb) return Long.compare(Long.parseLong(a), Long.parseLong(b));
+            return na ? -1 : nb ? 1 : a.compareTo(b);
+        });
+        StringBuilder out = new StringBuilder("{\n");
+        for (int i = 0; i < codes.size(); i++) {
+            String v = labels.get(codes.get(i));
+            out.append("  ").append(JSONObject.quote(codes.get(i))).append(": ").append(JSONObject.quote(v == null ? "" : v.trim()))
+                    .append(i < codes.size() - 1 ? ",\n" : "\n");
+        }
+        out.append("}\n");
+        if (file.isFile()) Files.copy(file.toPath(), new File(file.getPath() + ".bak").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Files.write(file.toPath(), out.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
     /** Adds an empty entry for any code not already present, preserving existing labels. Returns how many were added. */
     public static int mergeTemplate(List<String> codes, File file) throws IOException {
         Map<String, String> existing = load(file);

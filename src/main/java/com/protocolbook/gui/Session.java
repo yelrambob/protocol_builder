@@ -3,6 +3,7 @@ package com.protocolbook.gui;
 import com.protocolbook.Main;
 import com.protocolbook.duplicates.DuplicateFinder;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
+import com.protocolbook.labels.CodeLabels;
 import com.protocolbook.labels.LabelConfig;
 import com.protocolbook.model.Protocol;
 import com.protocolbook.overrides.ProtocolOverride;
@@ -47,7 +48,11 @@ final class Session {
     /** The same protocols in protocol-number order, for lists. */
     final List<Protocol> sortedProtocols;
     final Map<String, ProtocolOverride> overrides;
-    final LabelConfig labels;
+    LabelConfig labels;
+    /** kernel-labels.json as it stands: code -> name ("" while not named yet). */
+    final Map<String, String> kernelNames = new java.util.TreeMap<String, String>();
+    /** Kernel codes used by the loaded protocols, with a few recon names using each. */
+    final Map<String, List<String>> kernelSamples;
     final Map<String, String> scannerNames = new LinkedHashMap<String, String>();
     final List<Section> sections = new ArrayList<Section>();
     final DuplicateFinder.Result duplicates;
@@ -61,7 +66,15 @@ final class Session {
         this.sortedProtocols = new ArrayList<Protocol>(protocols);
         sortedProtocols.sort((a, b) -> com.protocolbook.html.ProtocolNumbers.compare(number(a), number(b)));
         this.overrides = ProtocolOverrides.load(overridesFile);
-        this.labels = LabelConfig.load(file("kernel-labels.json"), file("plane-labels.json"), file("category-labels.json"));
+        // The --init-kernel-labels step, done on every load: any kernel code not in the file yet is added blank,
+        // to be named on the "Kernel names" screen. Existing names are never touched.
+        List<String> codes = new ArrayList<String>(Main.collectReconCodes(protocols, true));
+        Map<String, String> existing = CodeLabels.load(file("kernel-labels.json"));
+        if (!existing.keySet().containsAll(codes) && settingsDir.isDirectory()) CodeLabels.mergeTemplate(codes, file("kernel-labels.json"));
+        this.kernelNames.putAll(CodeLabels.load(file("kernel-labels.json")));
+        for (String code : codes) if (!kernelNames.containsKey(code)) kernelNames.put(code, "");
+        this.kernelSamples = Main.sampleReconNamesByKernelCode(protocols);
+        this.labels = loadLabels();
         for (Protocol p : protocols) if (number(p) != null) scannerNames.put(number(p), p.getMetadata().getName());
         this.duplicates = DuplicateFinder.find(protocols);
         // Same grouping and order as the book, but nothing left out yet - excluding is part of the review.
@@ -77,6 +90,18 @@ final class Session {
         List<Protocol> protocols = Main.loadProtocols(input, new File(dir, "manual-protocols.json"), new ArrayList<File>(),
                 new File(dir, "reference workbooks"), overridesFile, log);
         return new Session(input, overridesFile, protocols);
+    }
+
+    private LabelConfig loadLabels() throws IOException {
+        return LabelConfig.load(file("kernel-labels.json"), file("plane-labels.json"), file("category-labels.json"));
+    }
+
+    /** Names one kernel code, writes kernel-labels.json and re-reads the labels so every screen shows the new name. */
+    void nameKernel(String code, String name) throws IOException {
+        kernelNames.put(code, name == null ? "" : name.trim());
+        if (!settingsDir.isDirectory()) settingsDir.mkdirs();
+        CodeLabels.save(kernelNames, file("kernel-labels.json"));
+        labels = loadLabels();
     }
 
     /** A file next to the overrides file (labels, logo, changelog, ...). */

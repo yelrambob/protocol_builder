@@ -27,9 +27,10 @@ For building or reviewing the book without editing JSON by hand, double-click **
 
 1. **Choose protocols** — the exported protocols folder (or a `Protocols.xlsm` workbook) and the changes file, `protocol-overrides.json`. Label files, `logo.png`, `changelog.json`, `manual-protocols.json` and the `reference workbooks` folder are read from the changes file's folder, the way the command line reads them from the current directory.
 2. **Leave out protocols** — every protocol with a *Leave out* box, a search box, and a note on duplicates (same settings or same name). *Leave out suggested duplicates* keeps the most recently updated copy of each identical group, the same suggestion as `--duplicates`.
-3. **One screen per section** (Adult — Head, Adult — Chest, ...) — one line per protocol with kV, mA, pitch, contrast volume @ rate, delay, main recon, CTDIvol and notes. Values set by hand show in the accent color. *Worth a look* flags likely problems: a name that says "with contrast" with no IV contrast (or the reverse), a contrast series with no volume or rate, and a kV that differs from the one most of the section uses. Tick *Edit* on the protocols to change and press *Edit checked* (or double-click a row); *Set contrast for checked* applies one volume/rate/delay to several at once. *Section reviewed* ticks the section off in the step list.
+3. **Kernel names** — the export only has a number for each recon kernel. This screen lists every kernel code the protocols use, a few recon names using each one (e.g. "AXIAL PELVIS STD 2.5MM" gives away Standard), and a box for the name the book shows. Names save to `kernel-labels.json` as you type. Each load adds any new kernel code to that file automatically, so `--init-kernel-labels` is never needed with the window. The step shows how many codes still need a name.
+4. **One screen per section** (Adult — Head, Adult — Chest, ...) — one line per protocol with kV, mA, pitch, contrast volume @ rate, delay, main recon, CTDIvol and notes. Values set by hand show in the accent color. *Worth a look* flags likely problems: a name that says "with contrast" with no IV contrast (or the reverse), a contrast series with no volume or rate, and a kV that differs from the one most of the section uses. Tick *Edit* on the protocols to change and press *Edit checked* (or double-click a row); *Set contrast for checked* applies one volume/rate/delay to several at once. *Section reviewed* ticks the section off in the step list.
    - The editor has four tabs. **Exam & contrast**: title, contrast volume/rate/delay, sends-to, scan range, exam dose, 3D on/off and scanning notes, with the scanner's value shown next to each box. **Series settings** and **Recons**: grids that start from what the book shows now, where any cell you change is highlighted (hover a cell to see the scanner's value). Clearing a cell, or typing the scanner's value back, removes the change. **Added fields**: information the scanner has no place for. *Add a field* asks what it applies to (Exam or one series), a title (titles used before are offered again) and the value. *Save & next* / *Save & previous* step through the checked protocols.
-4. **Review & create book** — every manual change in one list (scanner value → new value), then the outputs. The **book PDF** and the **list of manual changes (PDF)** are ticked by default; the **HTML book** is optional. Choose the book title, the file name (*Save as*) and the folder. Files come out as `<name>.pdf`, `<name>.html` and `<name> - changes.pdf`.
+5. **Review & create book** — every manual change in one list (scanner value → new value), then the outputs. The **book PDF** and the **list of manual changes (PDF)** are ticked by default; the **HTML book** is optional. Choose the book title, the file name (*Save as*) and the folder. Files come out as `<name>.pdf`, `<name>.html` and `<name> - changes.pdf`.
 
 Every edit is saved to `protocol-overrides.json` straight away (the previous version is kept as `protocol-overrides.json.bak`), so you can stop halfway through and pick up later. It's the same file the command line and the `.bat` scripts use, so either works on the same changes. Changes only affect the book; the scanner keeps its own settings. That's why the changes PDF lists the scanner's value next to each new one: it doubles as the list of what to update at the console.
 
@@ -246,6 +247,8 @@ All three are only used when `--html` is passed.
 
 ### Populating the label/override files: the `--init-*` workflow
 
+With the [Protocol Builder window](#the-protocol-builder-window-gui) none of these are needed. It adds protocols to `protocol-overrides.json` as you change them, adds new kernel codes to `kernel-labels.json` on every load (named on its *Kernel names* screen), and plane and category labels have built-in defaults. The init scripts below are for working from the command line.
+
 Run once against your real export data to seed each file with every code/protocol number actually in use, with blank values ready to fill in:
 
 ```bash
@@ -358,7 +361,7 @@ src/main/java/com/protocolbook/
   overrides/                      ProtocolOverride model + load/save/mergeTemplate for protocol-overrides.json
   changes/ManualChanges.java      Every hand-set value next to the scanner's (GUI review screen, --changes-pdf)
   gui/                            The Protocol Builder window (Swing): ProtocolBuilderGui (frame, steps, Colors menu),
-                                   SetupPanel, ExcludePanel, SectionPanel + SectionRow (at-a-glance line and checks),
+                                   SetupPanel, ExcludePanel, KernelPanel, SectionPanel + SectionRow (at-a-glance line and checks),
                                    ProtocolEditorDialog, FinishPanel, Session (loaded data), Prefs (remembered choices)
   labels/                         CodeLabels (generic code->label file) + LabelConfig (kernel/plane/category)
   manual/ManualProtocols.java     Loads/merges hand-authored protocols not present on the scanner
