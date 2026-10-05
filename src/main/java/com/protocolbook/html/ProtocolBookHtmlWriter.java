@@ -265,6 +265,10 @@ public class ProtocolBookHtmlWriter {
         }
 
         for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
+        if (needsThreeD(p, override)) {
+            appendThreeDSeries(html, "3D MIP");
+            appendThreeDSeries(html, "3D VR");
+        }
 
         if (!p.getNotes().isEmpty()) {
             html.append("<p class=\"notes\">Notes: ").append(HtmlSupport.esc(String.join("; ", p.getNotes()))).append("</p>\n");
@@ -292,6 +296,31 @@ public class ProtocolBookHtmlWriter {
         if (scout) appendScoutTable(html, s, labels);
         else for (Group g : s.getGroups()) appendGroup(html, g, labels, override);
         html.append("</div>\n");
+    }
+
+    // AW Server host names vary by site ("AW", "AWSERVER", "AW_SERVER1", ...) - any host with "AW" at the start
+    // of a word counts, without matching hosts that merely contain those letters (e.g. "DRAWER").
+    private static final java.util.regex.Pattern AW_HOST = java.util.regex.Pattern.compile("(?i)(^|[^A-Z])AW");
+
+    // Protocols that go to AW Server get the 3D MIP and 3D VR series built there. A "threeD" override
+    // forces them on or off; otherwise it's decided from the auto-send hosts (per-recon overrides
+    // included) and the hand-typed sendDestination.
+    static boolean needsThreeD(Protocol p, ProtocolOverride override) {
+        if (override != null && override.getThreeD() != null) return override.getThreeD();
+        if (override != null && override.getSendDestination() != null && AW_HOST.matcher(override.getSendDestination()).find()) return true;
+        for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions())
+            for (String host : sendDestinations(r, override)) if (AW_HOST.matcher(host).find()) return true;
+        return false;
+    }
+
+    // Rotation (spinning around the patient's long axis) and tumble (head-over-feet) are separate
+    // image sets, so each gets its own row.
+    private void appendThreeDSeries(StringBuilder html, String name) {
+        html.append("<div class=\"series three-d\"><h3>").append(HtmlSupport.esc(name)).append("</h3>\n")
+                .append("<table class=\"recons\">\n<tr><th>Recon</th><th>Increment</th></tr>\n")
+                .append("<tr><td>").append(HtmlSupport.esc(name)).append(" rotation</td><td>10&deg;</td></tr>\n")
+                .append("<tr><td>").append(HtmlSupport.esc(name)).append(" tumble</td><td>10&deg;</td></tr>\n")
+                .append("</table>\n</div>\n");
     }
 
     private boolean isScout(Series s) {

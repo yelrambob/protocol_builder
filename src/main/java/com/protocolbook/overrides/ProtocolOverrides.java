@@ -59,6 +59,9 @@ import java.util.Map;
  * "protocolName" is filled in by --init-overrides from the scanner name, purely so the file can be
  * searched by name; it's never read back (use "title" to rename).
  *
+ * "threeD": true adds the 3D MIP / 3D VR series to a protocol's page, false leaves them off; without
+ * it they're shown for any protocol whose images auto-send to an AW Server host.
+ *
  * "reconSendDestinations" replaces the auto-send hosts shown for individual recons, by recon name
  * (as shown in the book; case and repeated spaces don't matter). The typed list replaces the
  * export's for that recon, so list every host, e.g. "AHSPACS, RAPID 1".
@@ -81,6 +84,7 @@ public final class ProtocolOverrides {
             o.setContrastRate(entry.optString("contrastRate", null));
             o.setReferenceSheet(entry.optString("referenceSheet", null));
             o.setScanRange(entry.optString("scanRange", null));
+            if (entry.has("threeD") && !entry.isNull("threeD") && !"".equals(entry.opt("threeD"))) o.setThreeD(entry.optBoolean("threeD"));
             JSONObject reconSends = entry.optJSONObject("reconSendDestinations");
             if (reconSends != null) for (String recon : reconSends.keySet()) o.getReconSendDestinations().put(recon, reconSends.optString(recon, ""));
             out.put(key, o);
@@ -105,7 +109,7 @@ public final class ProtocolOverrides {
 
     // Fields in the order they're written, so every entry reads the same top to bottom; any other key follows these.
     private static final List<String> FIELD_ORDER = Arrays.asList("protocolName", "title", "notes", "excluded", "sendDestination",
-            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "reconSendDestinations");
+            "contrastVolume", "contrastRate", "referenceSheet", "scanRange", "reconSendDestinations", "threeD");
 
     /**
      * Adds an empty entry for any protocol number not already present in the file (creating the file

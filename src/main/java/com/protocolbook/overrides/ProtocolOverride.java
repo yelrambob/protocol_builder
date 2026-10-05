@@ -27,6 +27,7 @@ public class ProtocolOverride {
     private String referenceSheet;
     private String scanRange;
     private Map<String, String> reconSendDestinations = new LinkedHashMap<String, String>();
+    private Boolean threeD;
     public String getTitle(){return title;} public void setTitle(String v){title=v;}
     public String getNotes(){return notes;} public void setNotes(String v){notes=v;}
     public boolean isExcluded(){return excluded;} public void setExcluded(boolean v){excluded=v;}
@@ -39,6 +40,8 @@ public class ProtocolOverride {
     public String getScanRange(){return scanRange;} public void setScanRange(String v){scanRange=v;}
     // Recon name -> comma-separated auto-send hosts, for when the export lists fewer hosts than the scanner really uses.
     public Map<String, String> getReconSendDestinations(){return reconSendDestinations;}
+    // true/false forces the 3D MIP/VR series on or off; null (not set) decides from whether the protocol sends to AW Server.
+    public Boolean getThreeD(){return threeD;} public void setThreeD(Boolean v){threeD=v;}
 
     /**
      * The auto-send hosts to show for a recon: the hand-typed list from "reconSendDestinations" when one

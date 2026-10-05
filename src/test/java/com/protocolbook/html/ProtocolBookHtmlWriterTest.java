@@ -153,6 +153,40 @@ class ProtocolBookHtmlWriterTest {
         assertEquals(1, html.split("RAPID 1</td>", -1).length - 1, "only the named recon in 9.2 changes");
     }
 
+    @Test void protocolsSentToAwServerGetSeparate3dMipAndVrSeriesAtTheBottom(@TempDir Path tempDir) throws Exception {
+        List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
+        Map<String, ProtocolOverride> overrides = new HashMap<>();
+        ProtocolOverride knee = new ProtocolOverride();
+        knee.getReconSendDestinations().put("AXIAL KNEE DET 2.5MM", "AHSPACS, AWSERVER");
+        overrides.put("9.2", knee);
+        ProtocolOverride shoulder = new ProtocolOverride();
+        shoulder.setThreeD(true); // forced on without an AW host
+        overrides.put("4.2", shoulder);
+        ProtocolOverride hip = new ProtocolOverride();
+        hip.setSendDestination("AHSPACS + AW Server");
+        hip.setThreeD(false); // forced off despite the AW host
+        overrides.put("8.2", hip);
+
+        File out = tempDir.resolve("book.html").toFile();
+        new ProtocolBookHtmlWriter().write(protocols, overrides, DEFAULT_LABELS, null, null, null, null, null, null, out);
+        String html = new String(Files.readAllBytes(out.toPath()), StandardCharsets.UTF_8);
+
+        String kneePage = page(html, "9.2");
+        int mip = kneePage.indexOf("<h3>3D MIP</h3>"), vr = kneePage.indexOf("<h3>3D VR</h3>");
+        assertTrue(mip > kneePage.lastIndexOf("<h3>Series ") && vr > mip, "3D MIP then 3D VR, after the scanner series");
+        assertTrue(kneePage.contains("<td>3D MIP rotation</td><td>10&deg;</td>") && kneePage.contains("<td>3D MIP tumble</td><td>10&deg;</td>"));
+        assertTrue(kneePage.contains("<td>3D VR rotation</td><td>10&deg;</td>") && kneePage.contains("<td>3D VR tumble</td><td>10&deg;</td>"));
+        assertTrue(page(html, "4.2").contains("<h3>3D MIP</h3>"), "threeD: true forces the 3D series on");
+        assertFalse(page(html, "8.2").contains("3D MIP"), "threeD: false keeps them off");
+        assertFalse(page(html, "9.8").contains("3D MIP"), "AHSPACS alone is not AW Server");
+    }
+
+    private static String page(String html, String number) {
+        int start = html.indexOf("<h2>" + number + " &mdash;");
+        int next = html.indexOf("<h2>", start + 1);
+        return html.substring(start, next > 0 ? next : html.length());
+    }
+
     @Test void showsMaRangeInsteadOfStaleFixedValueWhenSmartMaIsActive(@TempDir Path tempDir) throws Exception {
         List<Protocol> protocols = new ProtocolFolderWalker().parse(FIXTURE_ROOT);
         File out = tempDir.resolve("book.html").toFile();
