@@ -16,8 +16,8 @@ You don't need to tell the tool which format you're using — point it at a file
 
 ## Requirements
 
-- Java 8 or newer.
-- The Gradle **wrapper** (`gradlew` / `gradlew.bat`) — always use it, never a system-installed `gradle` binary. The wrapper pins the exact Gradle version (8.x) this build is written for; a distro-packaged `gradle` is often years out of date and will fail with confusing errors on this `build.gradle`.
+- Java 17 or newer to build and run (tested on 17, 21 and 25). The compiled code itself still targets Java 8.
+- The Gradle **wrapper** (`gradlew` / `gradlew.bat`) — always use it, never a system-installed `gradle` binary. The wrapper pins the exact Gradle version (9.x) this build is written for — 9.x is needed to run on Java 25, where 8.x fails with `Unsupported class file major version 69`; a distro-packaged `gradle` is often years out of date and will fail with confusing errors on this `build.gradle`.
 
 No manual dependency installation is needed — Gradle resolves Apache POI (`poi-ooxml`), `org.json`, and JUnit 5 from Maven Central on first run.
 
