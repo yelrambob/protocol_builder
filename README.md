@@ -137,7 +137,8 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
   "3.7":  { "title": "CT Neck Soft Tissue (renamed)" },
   "5.2":  { "contrastVolume": "100", "contrastRate": "3.5" },
   "8.6":  { "referenceSheet": "CT Routine Abd-Pel" },
-  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" }
+  "8.7":  { "scanRange": "Iliac crests to ischial tuberosities" },
+  "1.5":  { "reconSendDestinations": { "AXIAL CTA HEAD": "AHSPACS, RAPID 1", "CTP MAPS": "RAPID 1" } }
 }
 ```
 
@@ -147,6 +148,7 @@ Keyed by protocol number (the same `slotNumber`/protocol number shown in the con
 - `sendDestination` — where images from this protocol are routed, typed by hand. Optional: without it, the book shows an "Auto-sends to:" line built from the auto-send hosts in the export (see below). Set it when you want to word the destination yourself or list a destination the scanner doesn't auto-send to.
 
 **Auto-send hosts** are read straight from the export: in `session.xml`, each recon and reformat has an `AutoJobTask` naming one `CTJobHost` per destination (e.g. `AHSPACS`, `RAPID 1`). They show per recon in the book's "Auto-send" column and as `sendDestinations` in the JSON. A blank cell means that recon isn't auto-sent (e.g. "by request only" MAR recons). Dose-report hosts (`DOSESC#...`/`DOSESR#...`) are left out.
+- `reconSendDestinations` — corrects the auto-send hosts for individual recons when the export lists fewer than the scanner really sends to (e.g. a stroke CTA that also goes to `RAPID 1`). Key each recon by its name as shown in the book (case and extra spaces don't matter) and list **every** host, comma-separated: the typed list replaces what the export says for that recon. Recons you don't name keep the exported hosts, and the "Auto-sends to:" header line includes the typed hosts. A name that matches no recon in that protocol prints a `WARN:` line when the book is built, so typos don't slip by. `--init-overrides` never removes these entries.
 - `contrastVolume` / `contrastRate` — override the IV contrast volume (mL) and rate (mL/s) shown for this protocol's series, in case what the export carries doesn't match actual practice. Either can be set independently; leave the other blank to keep the parsed value for it.
 - `referenceSheet` — the reference-workbook sheet to take this protocol's scan range from, when matching by name picks the wrong one or none (exact sheet name, case-insensitive).
 - `scanRange` — type the scan range in directly; wins over any reference workbook.

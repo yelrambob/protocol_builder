@@ -193,6 +193,8 @@ public class Main {
                 new ProtocolJsonWriter().writeAll(protocols, jsonDir);
                 System.out.println("Wrote combined JSON to " + jsonDir.getAbsolutePath());
             }
+            if (htmlFile != null || pdfFile != null)
+                for (String line : ProtocolOverrides.unmatchedReconNames(protocols, ProtocolOverrides.load(overridesFile))) System.err.println("WARN: " + line);
             if (htmlFile != null) {
                 Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
                 LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);

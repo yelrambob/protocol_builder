@@ -1,5 +1,9 @@
 package com.protocolbook.overrides;
 
+import com.protocolbook.model.Group;
+import com.protocolbook.model.Protocol;
+import com.protocolbook.model.Reconstruction;
+import com.protocolbook.model.Series;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -7,7 +11,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,7 +30,8 @@ import java.util.Map;
  *   "3.7": { "title": "CT Neck Soft Tissue (renamed)" },
  *   "5.2": { "contrastVolume": "100", "contrastRate": "3.5" },
  *   "8.6": { "referenceSheet": "CT Routine Abd-Pel" },
- *   "8.7": { "scanRange": "Iliac crests to ischial tuberosities" }
+ *   "8.7": { "scanRange": "Iliac crests to ischial tuberosities" },
+ *   "1.5": { "reconSendDestinations": { "AXIAL CTA HEAD": "AHSPACS, RAPID 1" } }
  * }
  *
  * "title" only renames how a protocol displays in the generated book - it never touches the
@@ -42,6 +49,10 @@ import java.util.Map;
  * "referenceSheet" names the reference-workbook sheet (see ReferenceSheets) to take this
  * protocol's scan range from, for when matching by name picks the wrong sheet or none;
  * "scanRange" types the scan range in directly and wins over any sheet.
+ *
+ * "reconSendDestinations" replaces the auto-send hosts shown for individual recons, by recon name
+ * (as shown in the book; case and repeated spaces don't matter). The typed list replaces the
+ * export's for that recon, so list every host, e.g. "AHSPACS, RAPID 1".
  */
 public final class ProtocolOverrides {
     private ProtocolOverrides() {}
@@ -61,7 +72,24 @@ public final class ProtocolOverrides {
             o.setContrastRate(entry.optString("contrastRate", null));
             o.setReferenceSheet(entry.optString("referenceSheet", null));
             o.setScanRange(entry.optString("scanRange", null));
+            JSONObject reconSends = entry.optJSONObject("reconSendDestinations");
+            if (reconSends != null) for (String recon : reconSends.keySet()) o.getReconSendDestinations().put(recon, reconSends.optString(recon, ""));
             out.put(key, o);
+        }
+        return out;
+    }
+
+    /** One line per reconSendDestinations recon name that matches no recon in its protocol, so a typo doesn't go unnoticed. */
+    public static List<String> unmatchedReconNames(List<Protocol> protocols, Map<String, ProtocolOverride> overrides) {
+        List<String> out = new ArrayList<String>();
+        for (Protocol p : protocols) {
+            String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+            ProtocolOverride o = number == null ? null : overrides.get(number);
+            if (o == null || o.getReconSendDestinations().isEmpty()) continue;
+            List<Reconstruction> recons = new ArrayList<Reconstruction>();
+            for (Series s : p.getSeries()) for (Group g : s.getGroups()) recons.addAll(g.getReconstructions());
+            for (String name : o.unmatchedReconNames(recons))
+                out.add("protocol " + number + " reconSendDestinations: no recon named '" + name + "' - check the spelling against the book");
         }
         return out;
     }
@@ -72,18 +100,9 @@ public final class ProtocolOverrides {
      * on them - are left untouched. Returns how many new entries were added.
      */
     public static int mergeTemplate(java.util.List<String> protocolNumbers, File file) throws IOException {
-        Map<String, ProtocolOverride> existing = load(file);
-        JSONObject json = new JSONObject();
-        for (Map.Entry<String, ProtocolOverride> e : existing.entrySet()) {
-            ProtocolOverride o = e.getValue();
-            json.put(e.getKey(), new JSONObject().put("title", o.getTitle() == null ? "" : o.getTitle())
-                    .put("notes", o.getNotes() == null ? "" : o.getNotes()).put("excluded", o.isExcluded())
-                    .put("sendDestination", o.getSendDestination() == null ? "" : o.getSendDestination())
-                    .put("contrastVolume", o.getContrastVolume() == null ? "" : o.getContrastVolume())
-                    .put("contrastRate", o.getContrastRate() == null ? "" : o.getContrastRate())
-                    .put("referenceSheet", o.getReferenceSheet() == null ? "" : o.getReferenceSheet())
-                    .put("scanRange", o.getScanRange() == null ? "" : o.getScanRange()));
-        }
+        // existing entries are carried over as-is, so fields this method doesn't scaffold (e.g. reconSendDestinations) survive
+        JSONObject json = file.isFile()
+                ? new JSONObject(new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8)) : new JSONObject();
         int added = 0;
         for (String number : protocolNumbers) {
             if (number == null || json.has(number)) continue;

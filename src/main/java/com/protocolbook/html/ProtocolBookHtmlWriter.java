@@ -253,7 +253,7 @@ public class ProtocolBookHtmlWriter {
             html.append("<p class=\"destination\">Sends to: ").append(HtmlSupport.esc(override.getSendDestination())).append("</p>\n");
         } else {
             Set<String> autoSend = new LinkedHashSet<String>();
-            for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) autoSend.addAll(r.getSendDestinations());
+            for (Series s : p.getSeries()) for (Group g : s.getGroups()) for (Reconstruction r : g.getReconstructions()) autoSend.addAll(sendDestinations(r, override));
             if (!autoSend.isEmpty())
                 html.append("<p class=\"destination\">Auto-sends to: ").append(HtmlSupport.esc(String.join(", ", autoSend))).append("</p>\n");
         }
@@ -290,7 +290,7 @@ public class ProtocolBookHtmlWriter {
         }
         if (!scout) appendContrastTiming(html, s);
         if (scout) appendScoutTable(html, s, labels);
-        else for (Group g : s.getGroups()) appendGroup(html, g, labels);
+        else for (Group g : s.getGroups()) appendGroup(html, g, labels, override);
         html.append("</div>\n");
     }
 
@@ -310,7 +310,11 @@ public class ProtocolBookHtmlWriter {
         html.append("</table>\n");
     }
 
-    private void appendGroup(StringBuilder html, Group g, LabelConfig labels) {
+    private static List<String> sendDestinations(Reconstruction r, ProtocolOverride override) {
+        return override != null ? override.sendDestinationsFor(r) : r.getSendDestinations();
+    }
+
+    private void appendGroup(StringBuilder html, Group g, LabelConfig labels, ProtocolOverride override) {
         Acquisition a = g.getAcquisition();
         boolean autoMa = a.isAutoMa();
         html.append("<p class=\"acquisition\">").append(HtmlSupport.esc(a.getKv())).append(" kV &middot; ")
@@ -330,7 +334,7 @@ public class ProtocolBookHtmlWriter {
                     .append("</td><td>").append(HtmlSupport.esc(r.getInterval())).append("</td><td>").append(HtmlSupport.esc(labels.kernel(r.getKernel())))
                     .append("</td><td>").append(HtmlSupport.esc(labels.asir(r.getIterativeConfig())))
                     .append("</td><td>").append(HtmlSupport.esc(windowWidthLevel(r)))
-                    .append("</td><td>").append(HtmlSupport.esc(String.join(", ", r.getSendDestinations()))).append("</td></tr>\n");
+                    .append("</td><td>").append(HtmlSupport.esc(String.join(", ", sendDestinations(r, override)))).append("</td></tr>\n");
         }
         html.append("</table>\n");
     }

@@ -30,6 +30,28 @@ class ProtocolOverridesTest {
         assertNotNull(after.get("9.6"));
     }
 
+    @Test void reconSendDestinationsLoadSurviveInitAndFlagTypos(@TempDir Path tempDir) throws Exception {
+        File file = tempDir.resolve("protocol-overrides.json").toFile();
+        java.nio.file.Files.write(file.toPath(), ("{ \"1.5\": { \"reconSendDestinations\": "
+                + "{ \"AXIAL CTA HEAD\": \"AHSPACS, RAPID 1\", \"AXAIL TYPO\": \"RAPID 1\" } } }").getBytes());
+
+        ProtocolOverrides.mergeTemplate(Arrays.asList("1.5", "1.6"), file);
+        ProtocolOverride stroke = ProtocolOverrides.load(file).get("1.5");
+        assertEquals("AHSPACS, RAPID 1", stroke.getReconSendDestinations().get("AXIAL CTA HEAD"), "init must not drop reconSendDestinations");
+
+        com.protocolbook.model.Reconstruction cta = new com.protocolbook.model.Reconstruction();
+        cta.setName("Axial CTA  Head");
+        cta.getSendDestinations().add("AHSPACS");
+        assertEquals(Arrays.asList("AHSPACS", "RAPID 1"), stroke.sendDestinationsFor(cta));
+
+        com.protocolbook.model.Reconstruction other = new com.protocolbook.model.Reconstruction();
+        other.setName("CORONAL MIP");
+        other.getSendDestinations().add("AHSPACS");
+        assertEquals(Arrays.asList("AHSPACS"), stroke.sendDestinationsFor(other), "unlisted recons keep the exported hosts");
+
+        assertEquals(Arrays.asList("AXAIL TYPO"), stroke.unmatchedReconNames(Arrays.asList(cta, other)));
+    }
+
     private static void writeNotes(File file, String protocolNumber, String notes) throws Exception {
         org.json.JSONObject json = new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(file.toPath())));
         json.getJSONObject(protocolNumber).put("notes", notes);
