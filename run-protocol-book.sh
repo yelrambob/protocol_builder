@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 INPUT="${1:-protocol data}"
 OVERRIDES="${2:-protocol-overrides.json}"
 
-./gradlew run --args="'$INPUT' --html book.html --overrides '$OVERRIDES'"
+./gradlew run --args="'$INPUT' --html book.html --pdf book.pdf --overrides '$OVERRIDES'"
 
 echo
-echo "Done. Open book.html in a browser to see the result."
+echo "Done. Open book.html in a browser, or print book.pdf."

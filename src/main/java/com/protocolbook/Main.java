@@ -4,6 +4,9 @@ import com.protocolbook.html.Changelog;
 import com.protocolbook.html.PdfLibrary;
 import com.protocolbook.html.PediatricWeightSheetWriter;
 import com.protocolbook.html.ProtocolBookHtmlWriter;
+import com.protocolbook.html.ProtocolBookPdfWriter;
+import com.protocolbook.html.DuplicateReportWriter;
+import com.protocolbook.duplicates.DuplicateFinder;
 import com.protocolbook.html.ProtocolImages;
 import com.protocolbook.io.ProtocolJsonWriter;
 import com.protocolbook.labels.CodeLabels;
@@ -34,7 +37,7 @@ import java.util.Map;
 import java.util.TreeSet;
 
 /**
- * Usage: Main <input> [--json <dir>] [--html <file>] [--book-title <text>] [--changelog <file>]
+ * Usage: Main <input> [--json <dir>] [--html <file>] [--pdf <file>] [--duplicates <file>] [--book-title <text>] [--changelog <file>]
  *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
@@ -64,6 +67,9 @@ import java.util.TreeSet;
  * --reference-workbook (repeatable) adds one of the site's own one-sheet-per-protocol reference
  * workbooks to take scan ranges from (see ReferenceSheets/ScanRangeMatcher); every workbook in
  * --reference-folder (default ./reference workbooks, only if present) is used too.
+ * --pdf writes the same book as a printable PDF (cover, contents with page numbers, one protocol
+ * per page). --duplicates writes a list of protocols with identical settings, or the same name
+ * (see DuplicateFinder), with the protocol-overrides.json lines that would hide the extra copies.
  * --peds-weights writes a printable sheet of protocols whose patientType contains "pediatric",
  * with any weight-in-kg found in the protocol name annotated with its pound equivalent.
  */
@@ -77,7 +83,7 @@ public class Main {
         System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
         try {
             File input = null;
-            File jsonDir = null, htmlFile = null, pedsWeightFile = null;
+            File jsonDir = null, htmlFile = null, pdfFile = null, duplicatesFile = null, pedsWeightFile = null;
             String bookTitle = null;
             File changelogFile = new File("changelog.json");
             File overridesFile = new File("protocol-overrides.json");
@@ -95,6 +101,8 @@ public class Main {
             for (int i = 0; i < args.length; i++) {
                 if ("--json".equals(args[i])) jsonDir = new File(args[++i]);
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
+                else if ("--pdf".equals(args[i])) pdfFile = new File(args[++i]);
+                else if ("--duplicates".equals(args[i])) duplicatesFile = new File(args[++i]);
                 else if ("--book-title".equals(args[i])) bookTitle = args[++i];
                 else if ("--changelog".equals(args[i])) changelogFile = new File(args[++i]);
                 else if ("--peds-weights".equals(args[i])) pedsWeightFile = new File(args[++i]);
@@ -201,6 +209,18 @@ public class Main {
                         + (referenceLibrary.isEmpty() ? "" : " (" + referenceLibrary.size() + " reference doc link(s) from " + referenceLibraryFile + ")")
                         + (protocolImages != null ? " (protocol images from " + protocolImagesBase + "/<number>." + protocolImagesExt + ")" : "")
                         + (changelog.isEmpty() ? "" : " (" + changelog.size() + " changelog entr" + (changelog.size() == 1 ? "y" : "ies") + " from " + changelogFile + ")"));
+            }
+            if (pdfFile != null) {
+                Map<String, ProtocolOverride> overrides = ProtocolOverrides.load(overridesFile);
+                LabelConfig labels = LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile);
+                new ProtocolBookPdfWriter().write(protocols, overrides, labels, loadLogoDataUri(logoFile), bookTitle, pdfFile);
+                System.out.println("Wrote printable protocol book to " + pdfFile.getAbsolutePath());
+            }
+            if (duplicatesFile != null) {
+                DuplicateFinder.Result duplicates = DuplicateFinder.find(protocols);
+                new DuplicateReportWriter().write(duplicates, ProtocolOverrides.load(overridesFile), duplicatesFile);
+                System.out.println("Found " + duplicates.identical.size() + " group(s) of protocols with identical settings and "
+                        + duplicates.sameNameDifferent.size() + " group(s) sharing a name - see " + duplicatesFile.getAbsolutePath());
             }
         } catch (Exception e) {
             System.err.println("ERROR: " + e.getMessage());
