@@ -101,6 +101,12 @@ public class Main {
                 else if (input == null) input = new File(args[i]);
             }
             if (input == null) input = new File("Protocols.xlsm");
+            if (!input.exists()) {
+                throw new IllegalArgumentException("Input not found: " + input.getAbsolutePath()
+                        + ". Point it at your exported protocol folder (or a Protocols.xlsm workbook), e.g. "
+                        + "drag-and-drop the folder onto run-protocol-book.bat, or create a \"protocol data\" folder "
+                        + "next to the .bat files and copy the exported protocol folders into it.");
+            }
 
             ProtocolParser parser = input.isDirectory() ? new ProtocolFolderWalker() : new GEWorkbookParser();
             List<Protocol> protocols = parser.parse(input);
