@@ -2,6 +2,7 @@ package com.protocolbook.model;
 public class Acquisition {
     private String kv, ma, rotationTime, pitch, detector, sliceThickness, interval, fieldOfView, matrix;
     private String minMa, maxMa, noiseIndex, maMode, scanDelay;
+    private String qualityRefMas, doseModulation, maUnit;
     public String getKv(){return kv;} public void setKv(String v){kv=v;}
     public String getMa(){return ma;} public void setMa(String v){ma=v;}
     public String getRotationTime(){return rotationTime;} public void setRotationTime(String v){rotationTime=v;}
@@ -19,6 +20,11 @@ public class Acquisition {
     public String getMaMode(){return maMode;} public void setMaMode(String v){maMode=v;}
     // Seconds from the start of the series (i.e. from injection, for a contrast series) to this group's scan - GE's groupDelay.
     public String getScanDelay(){return scanDelay;} public void setScanDelay(String v){scanDelay=v;}
+    // Siemens: CARE Dose4D's quality reference mAs, the dose modulation in use (e.g. "CARE Dose4D", "Off"),
+    // and "mAs" as the unit of "ma" (Siemens gives effective mAs, GE gives mA). maUnit null means mA.
+    public String getQualityRefMas(){return qualityRefMas;} public void setQualityRefMas(String v){qualityRefMas=v;}
+    public String getDoseModulation(){return doseModulation;} public void setDoseModulation(String v){doseModulation=v;}
+    public String getMaUnit(){return maUnit == null ? "mA" : maUnit;} public void setMaUnit(String v){maUnit=v;}
 
     /**
      * milliAmpsMode is a mode code, not a flag - "0" means SmartmA/auto-mA is off (a fixed-dose

@@ -68,12 +68,16 @@ final class Session {
         this.overrides = ProtocolOverrides.load(overridesFile);
         // The --init-kernel-labels step, done on every load: any kernel code not in the file yet is added blank,
         // to be named on the "Kernel names" screen. Existing names are never touched.
-        List<String> codes = new ArrayList<String>(Main.collectReconCodes(protocols, true));
+        // only numeric codes need naming (GE); kernels that already have names (Siemens "Br40") are left alone
+        List<String> codes = new ArrayList<String>();
+        for (String code : Main.collectReconCodes(protocols, true)) if (code.matches("\\d+")) codes.add(code);
         Map<String, String> existing = CodeLabels.load(file("kernel-labels.json"));
         if (!existing.keySet().containsAll(codes) && settingsDir.isDirectory()) CodeLabels.mergeTemplate(codes, file("kernel-labels.json"));
         this.kernelNames.putAll(CodeLabels.load(file("kernel-labels.json")));
         for (String code : codes) if (!kernelNames.containsKey(code)) kernelNames.put(code, "");
-        this.kernelSamples = Main.sampleReconNamesByKernelCode(protocols);
+        this.kernelSamples = new LinkedHashMap<String, List<String>>();
+        for (Map.Entry<String, List<String>> e : Main.sampleReconNamesByKernelCode(protocols).entrySet())
+            if (codes.contains(e.getKey())) kernelSamples.put(e.getKey(), e.getValue());
         this.labels = loadLabels();
         for (Protocol p : protocols) if (number(p) != null) scannerNames.put(number(p), p.getMetadata().getName());
         this.duplicates = DuplicateFinder.find(protocols);
@@ -86,8 +90,12 @@ final class Session {
     }
 
     static Session load(File input, File overridesFile, PrintStream log) throws Exception {
+        return load(input, null, overridesFile, log);
+    }
+
+    static Session load(File input, com.protocolbook.parser.ScannerFormat format, File overridesFile, PrintStream log) throws Exception {
         File dir = overridesFile.getAbsoluteFile().getParentFile();
-        List<Protocol> protocols = Main.loadProtocols(input, new File(dir, "manual-protocols.json"), new ArrayList<File>(),
+        List<Protocol> protocols = Main.loadProtocols(input, format, new File(dir, "manual-protocols.json"), new ArrayList<File>(),
                 new File(dir, "reference workbooks"), overridesFile, log);
         return new Session(input, overridesFile, protocols);
     }
@@ -160,7 +168,10 @@ final class Session {
     private static void describe(List<Protocol> group, String prefix, String suffix, Map<Protocol, String> notes) {
         for (Protocol p : group) {
             List<String> others = new ArrayList<String>();
-            for (Protocol q : group) if (q != p) others.add(number(q));
+            for (Protocol q : group) if (q != p) {
+                String shown = com.protocolbook.html.ProtocolNumbers.displayNumber(q);
+                others.add(shown.isEmpty() ? q.getMetadata().getName() : shown);
+            }
             if (!notes.containsKey(p)) notes.put(p, prefix + String.join(", ", others) + suffix);
         }
     }

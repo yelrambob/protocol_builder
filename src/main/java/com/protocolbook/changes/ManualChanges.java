@@ -24,10 +24,12 @@ public final class ManualChanges {
     private ManualChanges() {}
 
     public static final class Change {
-        public final String protocolNumber, protocolName, where, setting, scannerValue, newValue;
+        /** protocolNumber is the protocol's key (its number, or for Siemens a name-based key); displayNumber is what to show ("" if none). */
+        public final String protocolNumber, displayNumber, protocolName, where, setting, scannerValue, newValue;
 
-        Change(String protocolNumber, String protocolName, String where, String setting, String scannerValue, String newValue) {
-            this.protocolNumber = protocolNumber;
+        Change(Protocol p, String protocolName, String where, String setting, String scannerValue, String newValue) {
+            this.protocolNumber = number(p);
+            this.displayNumber = ProtocolNumbers.displayNumber(p);
             this.protocolName = protocolName;
             this.where = where;
             this.setting = setting;
@@ -39,7 +41,7 @@ public final class ManualChanges {
     private static final Map<String, String> LABELS = new LinkedHashMap<String, String>();
     static {
         LABELS.put("kv", "kV");
-        LABELS.put("ma", "mA");
+        LABELS.put("ma", "mA / mAs");
         LABELS.put("noiseIndex", "Noise index");
         LABELS.put("pitch", "Pitch");
         LABELS.put("rotationTime", "Rotation (s)");
@@ -74,8 +76,8 @@ public final class ManualChanges {
     /** The manual changes on one protocol. */
     public static List<Change> of(Protocol p, ProtocolOverride o, LabelConfig labels) {
         List<Change> out = new ArrayList<Change>();
-        String number = number(p), name = p.getMetadata() == null ? null : p.getMetadata().getName();
-        if (o.isExcluded()) out.add(new Change(number, name, "Exam", "In the book", "Yes", "Left out"));
+        String name = p.getMetadata() == null ? null : p.getMetadata().getName();
+        if (o.isExcluded()) out.add(new Change(p, name, "Exam", "In the book", "Yes", "Left out"));
         add(out, p, "Exam", "Title", name, o.getTitle());
         add(out, p, "Exam", "Scanning notes", null, o.getNotes());
         add(out, p, "Exam", "Contrast volume (mL)", ScannerValues.contrastVolume(p), o.getContrastVolume());
@@ -86,7 +88,7 @@ public final class ManualChanges {
         add(out, p, "Exam", "Scan range sheet", null, o.getReferenceSheet());
         add(out, p, "Exam", "Exam CTDIvol (mGy)", ScannerValues.examCtdi(p), o.getExamCtdi());
         add(out, p, "Exam", "Exam DLP (mGy·cm)", ScannerValues.examDlp(p), o.getExamDlp());
-        if (o.getThreeD() != null) out.add(new Change(number, name, "Exam", "3D MIP / VR", "Automatic", o.getThreeD() ? "Always" : "Never"));
+        if (o.getThreeD() != null) out.add(new Change(p, name, "Exam", "3D MIP / VR", "Automatic", o.getThreeD() ? "Always" : "Never"));
 
         for (Map.Entry<String, Map<String, String>> e : o.getSeries().entrySet()) {
             Series s = series(p, e.getKey());
@@ -124,7 +126,7 @@ public final class ManualChanges {
 
     private static void add(List<Change> out, Protocol p, String where, String setting, String scanner, String typed) {
         if (!notBlank(typed)) return;
-        out.add(new Change(number(p), p.getMetadata() == null ? null : p.getMetadata().getName(), where, setting, scanner, typed.trim()));
+        out.add(new Change(p, p.getMetadata() == null ? null : p.getMetadata().getName(), where, setting, scanner, typed.trim()));
     }
 
     private static Series series(Protocol p, String number) {

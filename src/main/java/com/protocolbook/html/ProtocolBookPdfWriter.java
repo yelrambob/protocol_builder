@@ -77,8 +77,7 @@ public class ProtocolBookPdfWriter {
                 for (Protocol p : group.getValue()) {
                     String id = book.protocolId(p, index++);
                     html.append("<li><a href=\"#").append(id).append("\">")
-                            .append(HtmlSupport.esc(p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber())).append(" &mdash; ")
-                            .append(HtmlSupport.esc(book.displayName(p, overrides))).append("</a></li>\n");
+                            .append(HtmlSupport.label(p, book.displayName(p, overrides))).append("</a></li>\n");
                 }
                 html.append("</ul>\n");
             }

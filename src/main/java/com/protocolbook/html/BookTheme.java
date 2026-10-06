@@ -10,7 +10,7 @@ import java.util.Locale;
  * the pale notes-box fill are worked out from the accent, so two picks are all it takes.
  */
 public final class BookTheme {
-    /** The book's original look - Atlantic Health System blue and orange. */
+    /** The default look - blue with an orange accent. */
     public static final BookTheme DEFAULT = new BookTheme("Blue & Orange", "#044281", "#ff8200");
 
     /** Ready-made pairs offered in the GUI's Colors menu. */

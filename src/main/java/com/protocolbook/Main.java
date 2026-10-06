@@ -25,6 +25,8 @@ import com.protocolbook.overrides.ProtocolOverrides;
 import com.protocolbook.parser.GEWorkbookParser;
 import com.protocolbook.parser.ProtocolFolderWalker;
 import com.protocolbook.parser.ProtocolParser;
+import com.protocolbook.parser.ScannerFormat;
+import com.protocolbook.io.ParameterCsvWriter;
 import com.protocolbook.reference.ReferenceSheets;
 import com.protocolbook.reference.ScanRangeMatcher;
 
@@ -42,7 +44,8 @@ import java.util.TreeSet;
 
 /**
  * Usage: Main <input> [--json <dir>] [--html <file>] [--pdf <file>] [--changes-pdf <file>] [--duplicates <file>] [--book-title <text>] [--changelog <file>]
- *             [--primary-color <#hex>] [--accent-color <#hex>]
+ *             [--primary-color <#hex>] [--accent-color <#hex>] [--format <ge-folder|ge-workbook|siemens>]
+ *             [--csv <file>] [--csv-columns <kv,asir,kernel,...>]
  *             [--peds-weights <file>] [--overrides <file>]
  *             [--kernel-labels <file>] [--plane-labels <file>] [--category-labels <file>]
  *             [--logo <file>] [--pdf-library <file>] [--reference-library <file>] [--manual-protocols <file>]
@@ -97,6 +100,9 @@ public class Main {
             File input = null;
             File jsonDir = null, htmlFile = null, pdfFile = null, changesPdfFile = null, duplicatesFile = null, pedsWeightFile = null;
             BookTheme theme = BookTheme.DEFAULT;
+            ScannerFormat format = null;
+            File csvFile = null;
+            String csvColumns = null;
             String bookTitle = null;
             File changelogFile = new File("changelog.json");
             File overridesFile = new File("protocol-overrides.json");
@@ -116,6 +122,9 @@ public class Main {
                 else if ("--html".equals(args[i])) htmlFile = new File(args[++i]);
                 else if ("--pdf".equals(args[i])) pdfFile = new File(args[++i]);
                 else if ("--changes-pdf".equals(args[i])) changesPdfFile = new File(args[++i]);
+                else if ("--format".equals(args[i])) format = ScannerFormat.byId(args[++i]);
+                else if ("--csv".equals(args[i])) csvFile = new File(args[++i]);
+                else if ("--csv-columns".equals(args[i])) csvColumns = args[++i];
                 else if ("--primary-color".equals(args[i])) theme = theme.withPrimary(args[++i]);
                 else if ("--accent-color".equals(args[i])) theme = theme.withAccent(args[++i]);
                 else if ("--duplicates".equals(args[i])) duplicatesFile = new File(args[++i]);
@@ -148,7 +157,7 @@ public class Main {
                         + "next to the .bat files and copy the exported protocol folders into it.");
             }
 
-            List<Protocol> protocols = loadProtocols(input, manualProtocolsFile, referenceWorkbooks, referenceFolder, overridesFile, System.out);
+            List<Protocol> protocols = loadProtocols(input, format, manualProtocolsFile, referenceWorkbooks, referenceFolder, overridesFile, System.out);
             for (Protocol p : protocols) {
                 String name = p.getMetadata() == null ? "(unnamed)" : p.getMetadata().getName();
                 System.out.printf("- %s: %d series, %d reconstructions, %d notes, %d advanced fields%n",
@@ -229,6 +238,14 @@ public class Main {
                 new ChangeReportWriter().withTheme(theme).write(protocols, ProtocolOverrides.load(overridesFile), labels, bookTitle, changesPdfFile);
                 System.out.println("Wrote list of manual changes to " + changesPdfFile.getAbsolutePath());
             }
+            if (csvFile != null) {
+                List<ParameterCsvWriter.Column> columns = new ArrayList<ParameterCsvWriter.Column>();
+                if (csvColumns == null) columns.addAll(ParameterCsvWriter.COLUMNS);
+                else for (String id : csvColumns.split(",")) if (!id.trim().isEmpty()) columns.add(ParameterCsvWriter.column(id));
+                int rows = ParameterCsvWriter.write(protocols, ProtocolOverrides.load(overridesFile),
+                        LabelConfig.load(kernelLabelsFile, planeLabelsFile, categoryLabelsFile), columns, false, csvFile);
+                System.out.println("Wrote " + rows + " row(s) of parameters to " + csvFile.getAbsolutePath());
+            }
             if (duplicatesFile != null) {
                 DuplicateFinder.Result duplicates = DuplicateFinder.find(protocols);
                 new DuplicateReportWriter().write(duplicates, ProtocolOverrides.load(overridesFile), duplicatesFile);
@@ -248,8 +265,17 @@ public class Main {
      */
     public static List<Protocol> loadProtocols(File input, File manualProtocolsFile, List<File> referenceWorkbooks, File referenceFolder,
                                                File overridesFile, PrintStream log) throws Exception {
-        ProtocolParser parser = input.isDirectory() ? new ProtocolFolderWalker() : new GEWorkbookParser();
-        List<Protocol> protocols = parser.parse(input);
+        return loadProtocols(input, null, manualProtocolsFile, referenceWorkbooks, referenceFolder, overridesFile, log);
+    }
+
+    /** As above, reading the input as the given scanner format (null: work it out from the input, see ScannerFormat#detect). */
+    public static List<Protocol> loadProtocols(File input, ScannerFormat format, File manualProtocolsFile, List<File> referenceWorkbooks,
+                                               File referenceFolder, File overridesFile, PrintStream log) throws Exception {
+        if (format == null) format = ScannerFormat.detect(input);
+        String problem = format.problemWith(input);
+        if (problem != null) throw new IllegalArgumentException(problem);
+        log.println("Reading " + input.getAbsolutePath() + " as " + format.label.replace('\u2014', '-'));
+        List<Protocol> protocols = format.parser().parse(input);
         log.println("Parsed " + protocols.size() + " protocol(s) from " + input.getAbsolutePath());
 
         List<Protocol> manualProtocols = ManualProtocols.load(manualProtocolsFile);

@@ -10,6 +10,12 @@ final class HtmlSupport {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 
+    /** "9.2 &amp;mdash; NAME" (escaped), or just the name for a protocol without a number to show. */
+    static String label(com.protocolbook.model.Protocol p, String name) {
+        String n = ProtocolNumbers.displayNumber(p);
+        return n.isEmpty() ? esc(name) : esc(n) + " &mdash; " + esc(name);
+    }
+
     static final String BASE_CSS =
             "body{font-family:sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;}" +
             "h1{margin-bottom:.25rem;}" +

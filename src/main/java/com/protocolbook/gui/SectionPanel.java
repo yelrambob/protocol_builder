@@ -156,7 +156,7 @@ final class SectionPanel extends JPanel implements ProtocolBuilderGui.Refreshabl
     }
 
     private final class Model extends AbstractTableModel {
-        private final String[] columns = {"Edit", "#", "Protocol", "kV", "mA", "Pitch", "Contrast (mL @ mL/s)", "Delay", "Main recon", "CTDIvol", "Notes", "Worth a look"};
+        private final String[] columns = {"Edit", "#", "Protocol", "kV", "mA / mAs", "Pitch", "Contrast (mL @ mL/s)", "Delay", "Main recon", "CTDIvol", "Notes", "Worth a look"};
 
         @Override public int getRowCount() { return rows.size(); }
 

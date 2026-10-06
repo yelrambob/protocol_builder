@@ -134,7 +134,7 @@ public final class ScannerValues {
     // Display window as "width/level" (e.g. "1500/250"), the order it's dialed in at the console.
     static String windowWidthLevel(Reconstruction r) {
         String ww = r.getWindowWidth(), wl = r.getWindowLevel();
-        if (ww == null && wl == null) return null;
+        if (ww == null && wl == null) return r.getWindowName();
         return (ww != null ? ww : "?") + "/" + (wl != null ? wl : "?");
     }
 }

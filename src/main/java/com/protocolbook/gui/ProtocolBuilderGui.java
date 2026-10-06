@@ -42,10 +42,11 @@ public class ProtocolBuilderGui extends JFrame {
     private final JPanel cardPanel = new JPanel(cards);
     private final JLabel headerTitle = new JLabel();
     private final JLabel headerStep = new JLabel();
+    private final JLabel headerLogo = new JLabel();
     private final JPanel header = new JPanel(new BorderLayout());
     private final JButton back = new JButton("◀ Back");
     private final JButton next = new JButton("Next ▶");
-    private final JMenu colorsMenu = new JMenu("Colors");
+    private final JMenu colorsMenu = new JMenu("Colors & logo");
     private final SetupPanel setupPanel;
     private boolean switching;
 
@@ -69,6 +70,9 @@ public class ProtocolBuilderGui extends JFrame {
         headerStep.setFont(headerStep.getFont().deriveFont(14f));
         header.add(headerTitle, BorderLayout.WEST);
         header.add(headerStep, BorderLayout.EAST);
+        headerLogo.setBorder(new EmptyBorder(0, 0, 0, 12));
+        header.add(headerLogo, BorderLayout.CENTER);
+        headerLogo.setHorizontalAlignment(SwingConstants.LEFT);
 
         stepList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         stepList.setCellRenderer(new DefaultListCellRenderer() {
@@ -120,6 +124,7 @@ public class ProtocolBuilderGui extends JFrame {
     /** Called by the setup screen once protocols are loaded: one step per section, then the finish screen. */
     void loaded(Session s) {
         session = s;
+        showLogo();
         rebuildSteps();
         show(1);
     }
@@ -196,9 +201,12 @@ public class ProtocolBuilderGui extends JFrame {
             if (session == null) JOptionPane.showMessageDialog(this, "Load the protocols first - the pictures are kept next to the changes file.");
             else PicturePicker.manage(this, session.file(com.protocolbook.html.ScanRangePictures.FOLDER));
         });
+        JMenuItem csv = new JMenuItem("Export parameters to CSV\u2026");
+        csv.addActionListener(e -> CsvExportDialog.show(this));
         file.add(open);
         file.add(save);
         file.add(pictures);
+        file.add(csv);
         file.addSeparator();
         file.add(exit);
         bar.add(file);
@@ -245,6 +253,21 @@ public class ProtocolBuilderGui extends JFrame {
         });
         colorsMenu.add(primary);
         colorsMenu.add(accent);
+        colorsMenu.addSeparator();
+        JMenuItem logo = new JMenuItem("Choose logo\u2026");
+        logo.addActionListener(e -> chooseLogo());
+        JMenuItem noLogo = new JMenuItem("Remove logo");
+        noLogo.setEnabled(session != null && session.file("logo.png").isFile());
+        noLogo.addActionListener(e -> {
+            if (JOptionPane.showConfirmDialog(this, "Take the logo off the book?", "Remove logo", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
+            java.io.File f = session.file("logo.png");
+            if (!f.renameTo(new java.io.File(f.getPath() + ".bak")) && !f.delete())
+                JOptionPane.showMessageDialog(this, "Couldn't remove " + f, "Remove logo", JOptionPane.ERROR_MESSAGE);
+            showLogo();
+            rebuildColorsMenu();
+        });
+        colorsMenu.add(logo);
+        colorsMenu.add(noLogo);
     }
 
     private void setTheme(BookTheme t) {
@@ -255,6 +278,44 @@ public class ProtocolBuilderGui extends JFrame {
     }
 
     // The header bar is drawn in the book's colors, so the choice is visible right away.
+    // The logo is kept as logo.png next to the changes file - where the book (and the command line) look for it.
+    private void chooseLogo() {
+        if (session == null) {
+            JOptionPane.showMessageDialog(this, "Load the protocols first - the logo is kept next to the changes file.");
+            return;
+        }
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Pictures (PNG, JPG, GIF, BMP)", "png", "jpg", "jpeg", "gif", "bmp"));
+        chooser.setDialogTitle("Choose a logo for the book");
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) return;
+        try {
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(chooser.getSelectedFile());
+            if (img == null) throw new java.io.IOException("not a picture this can read");
+            java.io.File target = session.file("logo.png");
+            if (target.isFile()) java.nio.file.Files.copy(target.toPath(), new java.io.File(target.getPath() + ".bak").toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            javax.imageio.ImageIO.write(img, "png", target);
+            showLogo();
+            rebuildColorsMenu();
+        } catch (java.io.IOException ex) {
+            JOptionPane.showMessageDialog(this, "Couldn't use " + chooser.getSelectedFile().getName() + ": " + ex.getMessage(), "Logo", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // A small copy of the logo in the header bar, so it's clear which one the book will use.
+    private void showLogo() {
+        headerLogo.setIcon(null);
+        if (session == null) return;
+        try {
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(session.file("logo.png"));
+            if (img == null) return;
+            int h = 34, w = Math.max(1, img.getWidth() * h / Math.max(1, img.getHeight()));
+            headerLogo.setIcon(new ImageIcon(img.getScaledInstance(Math.min(w, 220), Math.min(w, 220) == w ? h : 220 * img.getHeight() / img.getWidth(), Image.SCALE_SMOOTH)));
+        } catch (java.io.IOException ignored) {
+            // no logo, or one that can't be read: just no preview
+        }
+    }
+
     private void applyTheme() {
         Color primary = Color.decode(theme.getPrimary()), accent = Color.decode(theme.getAccent());
         header.setBackground(primary);

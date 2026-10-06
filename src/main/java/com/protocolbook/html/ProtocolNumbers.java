@@ -24,11 +24,32 @@ public final class ProtocolNumbers {
      */
     public static boolean isPediatricProtocol(Protocol p) {
         Metadata m = p.getMetadata();
-        if (isPediatric(m == null ? null : m.getProtocolNumber())) return true;
+        // the dotted-number convention only means anything for protocols that are numbered that way
+        if (m != null && m.getSection() == null && isPediatric(m.getProtocolNumber())) return true;
         String type = m == null ? null : m.getPatientType();
         if (type == null) return false;
         String t = type.toLowerCase(Locale.ROOT);
         return t.contains("pediatric") || t.contains("peds") || t.contains("pedi") || t.contains("child");
+    }
+
+    /** The number to show for a protocol - "" when its scanner doesn't number protocols (see Metadata#getDisplayNumber). */
+    public static String displayNumber(Protocol p) {
+        Metadata m = p == null ? null : p.getMetadata();
+        if (m == null) return "";
+        if (m.getDisplayNumber() != null) return m.getDisplayNumber();
+        return m.getProtocolNumber() == null ? "" : m.getProtocolNumber();
+    }
+
+    /** "9.2 - NAME", or just "NAME" for a protocol without a number to show. */
+    public static String label(Protocol p, String name) {
+        String n = displayNumber(p);
+        return n.isEmpty() ? (name == null ? "" : name) : n + " \u2014 " + (name == null ? "" : name);
+    }
+
+    /** Whether a protocol came from a Siemens export (whose contrast isn't in the export, among other differences). */
+    public static boolean isSiemens(Protocol p) {
+        Metadata m = p == null ? null : p.getMetadata();
+        return m != null && m.getScanner() != null && m.getScanner().toLowerCase(Locale.ROOT).startsWith("siemens");
     }
 
     static boolean isPediatric(String number) {

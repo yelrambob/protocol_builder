@@ -1,5 +1,7 @@
 package com.protocolbook.gui;
 
+import com.protocolbook.parser.ScannerFormat;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.ByteArrayOutputStream;
@@ -10,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 /** Step 1: where the exported protocols are and which overrides file the changes go into, then load. */
 final class SetupPanel extends JPanel {
     private final ProtocolBuilderGui gui;
+    private final JComboBox<Object> format = new JComboBox<Object>();
+    private final JLabel formatHelp = new JLabel(" ");
     private final JTextField input = new JTextField();
     private final JTextField overrides = new JTextField();
     private final JButton load = new JButton("Load protocols");
@@ -26,15 +30,34 @@ final class SetupPanel extends JPanel {
         GridBagConstraints c = new GridBagConstraints();
         c.insets = new Insets(6, 4, 6, 4);
         c.anchor = GridBagConstraints.WEST;
-        row(form, c, 0, "Protocols folder:", input, browse(input, true),
-                "The folder of protocols exported from the scanner (any nesting is fine), or a Protocols.xlsm workbook.");
-        row(form, c, 2, "Changes file:", overrides, browse(overrides, false),
+        format.addItem("Choose the scanner\u2026");
+        for (ScannerFormat f : ScannerFormat.values()) format.addItem(f);
+        String saved = gui.prefs.get("format", "");
+        for (ScannerFormat f : ScannerFormat.values()) if (f.id.equals(saved)) format.setSelectedItem(f);
+        format.addActionListener(e -> {
+            Object f = format.getSelectedItem();
+            formatHelp.setText("<html>" + (f instanceof ScannerFormat ? ((ScannerFormat) f).help : "Which scanner the protocols were exported from.") + "</html>");
+            formatHelp.setForeground(f instanceof ScannerFormat && !((ScannerFormat) f).supported ? Ui.WARNING : new Color(0x555555));
+        });
+        format.setSelectedIndex(format.getSelectedIndex());
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 1; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+        JLabel fl = new JLabel("Scanner:");
+        fl.setFont(fl.getFont().deriveFont(Font.BOLD));
+        form.add(fl, c);
+        c.gridx = 1; c.gridwidth = 2; c.fill = GridBagConstraints.NONE;
+        form.add(format, c);
+        c.gridy = 1; c.fill = GridBagConstraints.HORIZONTAL;
+        form.add(formatHelp, c);
+        c.gridwidth = 1;
+        row(form, c, 2, "Protocols:", input, browse(input, true),
+                "The exported protocols: the export folder (GE Revolution) or the workbook (GE Protocols.xlsm, Siemens export).");
+        row(form, c, 4, "Changes file:", overrides, browse(overrides, false),
                 "protocol-overrides.json - where everything you change is saved. It's created if it doesn't exist. "
                         + "Label files, logo.png and changelog.json are read from the same folder.");
 
         load.setFont(load.getFont().deriveFont(Font.BOLD, 14f));
         load.addActionListener(e -> load());
-        c.gridx = 1; c.gridy = 4; c.gridwidth = 1; c.fill = GridBagConstraints.NONE;
+        c.gridx = 1; c.gridy = 6; c.gridwidth = 1; c.fill = GridBagConstraints.NONE;
         form.add(load, c);
 
         log.setEditable(false);
@@ -75,7 +98,7 @@ final class SetupPanel extends JPanel {
             chooser.setCurrentDirectory(current.isDirectory() ? current : current.getAbsoluteFile().getParentFile());
             if (protocols) {
                 chooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-                chooser.setDialogTitle("Choose the exported protocols folder (or a Protocols.xlsm workbook)");
+                chooser.setDialogTitle("Choose the exported protocols (folder or workbook)");
             } else {
                 chooser.setSelectedFile(current);
                 chooser.setDialogTitle("Choose (or name) the changes file");
@@ -91,8 +114,19 @@ final class SetupPanel extends JPanel {
     }
 
     private void load() {
+        if (!(format.getSelectedItem() instanceof ScannerFormat)) {
+            JOptionPane.showMessageDialog(this, "Choose which scanner the protocols come from first.", "Scanner", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        final ScannerFormat chosen = (ScannerFormat) format.getSelectedItem();
         File in = new File(input.getText().trim());
         File ov = new File(overrides.getText().trim());
+        String problem = chosen.problemWith(in);
+        if (problem != null) {
+            JOptionPane.showMessageDialog(this, problem, "Can't load these protocols", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        gui.prefs.put("format", chosen.id);
         if (!in.exists()) {
             JOptionPane.showMessageDialog(this, "Can't find " + in.getAbsolutePath(), "Protocols folder not found", JOptionPane.ERROR_MESSAGE);
             return;
@@ -109,7 +143,7 @@ final class SetupPanel extends JPanel {
 
             @Override protected Session doInBackground() throws Exception {
                 try (PrintStream ps = new PrintStream(out, true, "UTF-8")) {
-                    return Session.load(in, overridesFile, ps);
+                    return Session.load(in, chosen, overridesFile, ps);
                 }
             }
 

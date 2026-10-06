@@ -113,7 +113,7 @@ final class ExcludePanel extends JPanel implements ProtocolBuilderGui.Refreshabl
             Protocol p = session.sortedProtocols.get(r);
             switch (c) {
                 case 0: return session.isExcluded(p);
-                case 1: return Session.number(p);
+                case 1: return com.protocolbook.html.ProtocolNumbers.displayNumber(p);
                 case 2: return p.getMetadata() == null ? "" : p.getMetadata().getName();
                 case 3: {
                     Session.Section s = session.sectionOf(p);

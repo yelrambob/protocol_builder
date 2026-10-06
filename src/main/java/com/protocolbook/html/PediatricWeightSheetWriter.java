@@ -61,7 +61,7 @@ public class PediatricWeightSheetWriter {
     // type for protocols that don't follow that convention (e.g. hand-authored manual protocols).
     private boolean isPediatric(Protocol p) {
         Metadata m = p.getMetadata();
-        if (ProtocolNumbers.isPediatric(m == null ? null : m.getProtocolNumber())) return true;
+        if (m != null && m.getSection() == null && ProtocolNumbers.isPediatric(m.getProtocolNumber())) return true;
         String type = m == null ? null : m.getPatientType();
         if (type == null) return false;
         String t = type.toLowerCase(Locale.ROOT);

@@ -169,7 +169,7 @@ final class ApplyBoxesDialog extends JDialog {
     private void applyTicked() {
         List<String> replaced = new ArrayList<String>();
         for (int i = 0; i < rows.size(); i++)
-            if (ticked.contains(rows.get(i)) && status.get(i) == Status.DIFFERENT) replaced.add(Session.number(rows.get(i)) + " " + name(rows.get(i)));
+            if (ticked.contains(rows.get(i)) && status.get(i) == Status.DIFFERENT) replaced.add(com.protocolbook.html.ProtocolNumbers.label(rows.get(i), name(rows.get(i))));
         if (!replaced.isEmpty() && JOptionPane.showConfirmDialog(this, "These already use " + picture.getImage() + " with different boxes, "
                 + "which will be replaced:\n\n" + String.join("\n", replaced), "Replace boxes?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE)
                 != JOptionPane.OK_OPTION) return;
@@ -202,7 +202,7 @@ final class ApplyBoxesDialog extends JDialog {
             Protocol p = rows.get(r);
             switch (c) {
                 case 0: return ticked.contains(p);
-                case 1: return Session.number(p);
+                case 1: return com.protocolbook.html.ProtocolNumbers.displayNumber(p);
                 case 2: return name(p);
                 case 3: return session.sectionOf(p).title();
                 default:
