@@ -292,7 +292,7 @@ final class ProtocolEditorDialog extends JDialog {
         JComponent component() {
             JPanel top = new JPanel(new BorderLayout());
             top.setBorder(new EmptyBorder(12, 14, 6, 14));
-            JLabel title = new JLabel(number + " — " + (p.getMetadata() == null ? "" : p.getMetadata().getName()));
+            JLabel title = new JLabel(com.protocolbook.html.ProtocolNumbers.label(p, p.getMetadata() == null ? "" : p.getMetadata().getName()));
             title.setFont(title.getFont().deriveFont(Font.BOLD, 17f));
             top.add(title, BorderLayout.WEST);
             top.add(excluded, BorderLayout.EAST);

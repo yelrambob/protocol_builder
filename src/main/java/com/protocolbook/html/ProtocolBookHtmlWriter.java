@@ -78,7 +78,7 @@ public class ProtocolBookHtmlWriter {
         html.append("<style>").append(rootCss(theme)).append(CSS).append("</style>\n</head>\n<body>\n");
 
         html.append("<nav class=\"main-menu\">\n");
-        if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\"></div>\n");
+        if (logoDataUri != null) html.append("<div class=\"menu-logo\"><img src=\"").append(logoDataUri).append("\" alt=\"Logo\"></div>\n");
         html.append("<ul>\n");
         for (String bucket : buckets) {
             Map<Integer, List<Protocol>> byGroup = tree.get(bucket);
@@ -95,8 +95,7 @@ public class ProtocolBookHtmlWriter {
                     Metadata m = p.getMetadata();
                     html.append("<li><a href=\"#").append(id).append("\" data-target=\"").append(id)
                             .append("\" onclick=\"showProtocol('").append(id).append("'); return false;\">")
-                            .append(HtmlSupport.esc(m == null ? null : m.getProtocolNumber())).append(" &mdash; ")
-                            .append(HtmlSupport.esc(displayName(p, overrides))).append("</a></li>\n");
+                            .append(HtmlSupport.label(p, displayName(p, overrides))).append("</a></li>\n");
                 }
                 html.append("</ul>\n</li>\n");
             }
@@ -112,7 +111,7 @@ public class ProtocolBookHtmlWriter {
 
         html.append("<main class=\"main-content\">\n");
         html.append("<div id=\"welcome\" class=\"protocol-view welcome\" style=\"display:block;\">\n");
-        if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
+        if (logoDataUri != null) html.append("<img class=\"welcome-logo\" src=\"").append(logoDataUri).append("\" alt=\"Logo\">\n");
         html.append("<h1>").append(HtmlSupport.esc(title)).append("</h1>\n<p>Select a protocol from the menu to view it.</p>\n</div>\n");
         if (changelog != null && !changelog.isEmpty()) appendRecentChanges(html, changelog, ids, byNumber);
         for (String bucket : buckets)
@@ -199,6 +198,7 @@ public class ProtocolBookHtmlWriter {
 
     // Whole-number prefix of the protocol number (e.g. 9 from "9.2") - GE's own grouping convention.
     private int groupKey(Protocol p) {
+        if (p.getMetadata() != null && p.getMetadata().getSection() != null) return p.getMetadata().getSection();
         String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         if (number == null) return Integer.MIN_VALUE;
         try { return Integer.parseInt(number.split("\\.")[0]); } catch (Exception e) { return Integer.MIN_VALUE; }
@@ -239,8 +239,8 @@ public class ProtocolBookHtmlWriter {
         Metadata m = p.getMetadata();
         String number = m == null ? null : m.getProtocolNumber();
         html.append("<div class=\"protocol-header\">\n");
-        if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Atlantic Health System\">\n");
-        html.append("<h2>").append(HtmlSupport.esc(number)).append(" &mdash; ").append(HtmlSupport.esc(displayName(p, overrides))).append("</h2>\n");
+        if (logoDataUri != null) html.append("<img class=\"protocol-logo\" src=\"").append(logoDataUri).append("\" alt=\"Logo\">\n");
+        html.append("<h2>").append(HtmlSupport.label(p, displayName(p, overrides))).append("</h2>\n");
         html.append("</div>\n");
 
         String imageUrl = protocolImages == null ? null : protocolImages.urlFor(number);
@@ -287,7 +287,7 @@ public class ProtocolBookHtmlWriter {
         }
 
         int seriesStart = html.length();
-        for (Series s : p.getSeries()) appendSeries(html, s, labels, override);
+        for (Series s : p.getSeries()) appendSeries(html, p, s, labels, override);
         if (needsThreeD(p, override)) {
             appendThreeDSeries(html, "3D MIP");
             appendThreeDSeries(html, "3D VR");
@@ -302,13 +302,14 @@ public class ProtocolBookHtmlWriter {
         }
     }
 
-    private void appendSeries(StringBuilder html, Series s, LabelConfig labels, ProtocolOverride override) {
+    private void appendSeries(StringBuilder html, Protocol p, Series s, LabelConfig labels, ProtocolOverride override) {
         boolean scout = isScout(s);
         html.append("<div class=\"series\"><h3>Series ").append(s.getNumber()).append(" &mdash; ")
                 .append(HtmlSupport.esc(s.getScanType())).append(HtmlSupport.esc(s.getName() == null ? "" : ": " + s.getName())).append("</h3>\n");
         // Injection rate/volume describes the contrast bolus for the diagnostic series, not the
         // scout/localizer - scouts never carry contrast timing of their own, so skip it there.
-        if (!scout) appendContrast(html, s, override);
+        if (!scout && ProtocolNumbers.isSiemens(p)) appendDelayOnly(html, s, override);
+        else if (!scout) appendContrast(html, s, override);
         if (override != null) appendAddedFields(html, override.addedFieldsFor(s.getNumber()));
         if (scout) appendScoutTable(html, s, labels, override);
         else for (Group g : s.getGroups()) appendGroup(html, g, s.getNumber(), labels, override);
@@ -373,7 +374,8 @@ public class ProtocolBookHtmlWriter {
 
     // Scouts are localizer images, not diagnostic reconstructions - one compact table beats a full acquisition block per plane.
     private void appendScoutTable(StringBuilder html, Series s, LabelConfig labels, ProtocolOverride override) {
-        html.append("<table class=\"recons\">\n<tr><th>Plane</th><th>kV</th><th>mA</th></tr>\n");
+        String unit = s.getGroups().isEmpty() ? "mA" : s.getGroups().get(0).getAcquisition().getMaUnit();
+        html.append("<table class=\"recons\">\n<tr><th>Plane</th><th>kV</th><th>").append(HtmlSupport.esc(unit)).append("</th></tr>\n");
         for (Group g : s.getGroups()) {
             Acquisition a = g.getAcquisition();
             String plane = g.getReconstructions().isEmpty() ? null : g.getReconstructions().get(0).getPlane();
@@ -392,7 +394,10 @@ public class ProtocolBookHtmlWriter {
         boolean autoMa = a.isAutoMa();
         String typedMa = seriesField(override, seriesNumber, "ma");
         html.append("<p class=\"acquisition\">").append(shown(a.getKv(), seriesField(override, seriesNumber, "kv"))).append(" kV &middot; ")
-                .append(shown(autoMa ? a.getMinMa() + "-" + a.getMaxMa() : a.getMa(), typedMa)).append(" mA");
+                .append(shown(autoMa ? a.getMinMa() + "-" + a.getMaxMa() : a.getMa(), typedMa)).append(" ").append(HtmlSupport.esc(a.getMaUnit()));
+        // Siemens CARE Dose4D: the quality reference mAs is the real setting, with the modulation named.
+        if (a.getQualityRefMas() != null) html.append(" (quality ref. ").append(HtmlSupport.esc(a.getQualityRefMas())).append(" mAs)");
+        if (a.getDoseModulation() != null) html.append(" &middot; ").append(HtmlSupport.esc(a.getDoseModulation()));
         // Noise Index only means anything under SmartmA/auto-mA - a fixed mA group's noiseIndex
         // field can be a stale leftover value, so don't show it when mA isn't actually automatic.
         String typedNi = seriesField(override, seriesNumber, "noiseIndex");
@@ -447,6 +452,25 @@ public class ProtocolBookHtmlWriter {
     // Contrast series: a "When ordered with contrast:" block with the dose, injection rate and delay
     // timing. The delay is the first diagnostic group's groupDelay, i.e. seconds from the start of
     // the series (the injection) to the scan. Non-contrast series keep a one-line note.
+    // The Siemens export has no contrast settings, only each range's delay - so say nothing about contrast
+    // either way (a typed volume/rate still shows, as on any protocol).
+    private void appendDelayOnly(StringBuilder html, Series s, ProtocolOverride override) {
+        String typedVolume = override == null ? null : blankToNull(override.getContrastVolume());
+        String typedRate = override == null ? null : blankToNull(override.getContrastRate());
+        String typedDelay = override == null ? null : blankToNull(override.getContrastDelay());
+        if (typedDelay != null && typedDelay.matches("[0-9.]+")) typedDelay += " sec";
+        String delay = ScannerValues.delaySeconds(s);
+        if (typedVolume != null || typedRate != null) {
+            html.append("<p class=\"contrast\"><strong>When ordered with contrast:</strong>");
+            if (typedVolume != null) html.append("<br>\nContrast Dose: ").append(shown(null, typedVolume)).append(" mL");
+            if (typedRate != null) html.append("<br>\nInjection rate: ").append(shown(null, typedRate)).append(" mL/s");
+            if (delay != null || typedDelay != null) html.append("<br>\nDelay timing: ").append(shown(delay == null ? null : delay + " sec", typedDelay));
+            html.append("</p>\n");
+        } else if (delay != null || typedDelay != null) {
+            html.append("<p class=\"contrast\">Scan delay: ").append(shown(delay == null ? null : delay + " sec", typedDelay)).append("</p>\n");
+        }
+    }
+
     private void appendContrast(StringBuilder html, Series s, ProtocolOverride override) {
         boolean contrast = s.getContrast() != null && s.getContrast().isIv();
         String delay = null;
@@ -511,7 +535,7 @@ public class ProtocolBookHtmlWriter {
         html.append("</table>\n</section>\n");
     }
 
-    // The palette comes from the BookTheme (default: the original AHS menu orange / main panel blue);
+    // The palette comes from the BookTheme (default: blue main color, orange accent);
     // the variable names are kept from when it was fixed - "blue" is the main color, "orange" the accent.
     static String rootCss(BookTheme theme) {
         return ":root{--ahs-blue:" + theme.getPrimary() + ";--ahs-blue-accent:" + theme.getPrimary() + ";--ahs-orange:" + theme.getAccent()

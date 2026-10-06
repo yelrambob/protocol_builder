@@ -37,13 +37,14 @@ final class SectionRow {
     }
 
     final Protocol protocol;
+    /** What the "#" column shows ("" for scanners that don't number protocols). */
     final String number;
     final Cell name, kv, ma, pitch, contrast, delay, recon, ctdi, extras;
     final List<String> warnings = new ArrayList<String>();
 
     private SectionRow(Protocol p, ProtocolOverride o, String scannerName, LabelConfig labels) {
         protocol = p;
-        number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
+        number = com.protocolbook.html.ProtocolNumbers.displayNumber(p);
         String title = o == null ? null : blankToNull(o.getTitle());
         name = new Cell(title != null ? title : scannerName, title != null);
         kv = seriesCell(p, o, "kv");
@@ -54,7 +55,13 @@ final class SectionRow {
         Cell rate = typedOr(o == null ? null : o.getContrastRate(), ScannerValues.contrastRate(p));
         Cell delaySeconds = typedOr(o == null ? null : o.getContrastDelay(), ScannerValues.contrastDelay(p));
         boolean iv = ScannerValues.firstContrastSeries(p) != null;
-        if (iv || volume.edited || rate.edited) {
+        boolean siemens = com.protocolbook.html.ProtocolNumbers.isSiemens(p);
+        if (siemens && !volume.edited && !rate.edited) {
+            // the Siemens export has no contrast settings - only the delay is known
+            String d = ScannerValues.contrastDelay(p) != null ? ScannerValues.contrastDelay(p) : firstDelay(p);
+            contrast = new Cell("(not in export)", false);
+            delay = delaySeconds.edited ? new Cell(delaySeconds.text + " s", true) : new Cell(d == null ? "" : d + " s", false);
+        } else if (iv || volume.edited || rate.edited) {
             contrast = new Cell((volume.text.isEmpty() ? "?" : volume.text) + " @ " + (rate.text.isEmpty() ? "?" : rate.text),
                     volume.edited || rate.edited);
             delay = new Cell(delaySeconds.text.isEmpty() ? "" : delaySeconds.text + " s", delaySeconds.edited);
@@ -81,7 +88,7 @@ final class SectionRow {
         if (added > 0) bits.add("+" + added + " field" + (added == 1 ? "" : "s"));
         extras = new Cell(String.join(", ", bits), !bits.isEmpty());
 
-        checkContrast(p, iv, volume, rate);
+        if (!siemens) checkContrast(p, iv, volume, rate);
     }
 
     /** Rows for one section's protocols, with each kV compared against what most of the section uses. */
@@ -98,7 +105,8 @@ final class SectionRow {
         String usual = mostCommon(rows);
         if (usual != null)
             for (SectionRow r : rows)
-                if (!r.kv.text.isEmpty() && !r.kv.text.equals(usual)) r.warnings.add("kV " + r.kv.text + " (most in this section use " + usual + ")");
+                if (!r.kv.text.isEmpty() && !java.util.Arrays.asList(r.kv.text.split(" / ")).contains(usual))
+                    r.warnings.add("kV " + r.kv.text + " (most in this section use " + usual + ")");
         return rows;
     }
 
@@ -108,7 +116,8 @@ final class SectionRow {
         int total = 0;
         for (SectionRow r : rows) {
             if (r.kv.text.isEmpty()) continue;
-            counts.merge(r.kv.text, 1, Integer::sum);
+            // a protocol with several kVs counts once for each
+            for (String kv : new LinkedHashSet<String>(java.util.Arrays.asList(r.kv.text.split(" / ")))) counts.merge(kv, 1, Integer::sum);
             total++;
         }
         if (total < 3) return null;
@@ -141,6 +150,11 @@ final class SectionRow {
             if (v != null && !v.trim().isEmpty()) values.add(v.trim());
         }
         return new Cell(String.join(" / ", values), edited);
+    }
+
+    private static String firstDelay(Protocol p) {
+        for (Series s : p.getSeries()) if (!ScannerValues.isScout(s) && ScannerValues.delaySeconds(s) != null) return ScannerValues.delaySeconds(s);
+        return null;
     }
 
     private static Reconstruction firstRecon(Protocol p) {

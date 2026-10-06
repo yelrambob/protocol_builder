@@ -5,6 +5,7 @@ public class Reconstruction {
     private String name, kernel, thickness, interval, plane, matrix, dfov;
     private String windowLevel, windowWidth, iterativeConfig, startLocation, endLocation;
     private Integer numberOfImages;
+    private String windowName;
     private boolean derived;
     private List<String> sendDestinations = new ArrayList<String>();
     public String getName(){return name;} public void setName(String v){name=v;}
@@ -19,6 +20,8 @@ public class Reconstruction {
     public String getIterativeConfig(){return iterativeConfig;} public void setIterativeConfig(String v){iterativeConfig=v;}
     public String getStartLocation(){return startLocation;} public void setStartLocation(String v){startLocation=v;}
     public String getEndLocation(){return endLocation;} public void setEndLocation(String v){endLocation=v;}
+    // A named window preset (Siemens, e.g. "Abdomen") when the export gives no width/level numbers.
+    public String getWindowName(){return windowName;} public void setWindowName(String v){windowName=v;}
     public Integer getNumberOfImages(){return numberOfImages;} public void setNumberOfImages(Integer v){numberOfImages=v;}
     /** Auto-send (auto-transfer) hosts this recon's images go to once reconstructed, e.g. "AHSPACS". */
     public List<String> getSendDestinations(){return sendDestinations;}

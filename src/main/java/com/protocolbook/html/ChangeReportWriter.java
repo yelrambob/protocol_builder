@@ -40,7 +40,7 @@ public class ChangeReportWriter {
             for (ManualChanges.Change c : changes) {
                 Protocol p = byNumber.get(c.protocolNumber);
                 if (!bucket.equals(ProtocolNumbers.isPediatricProtocol(p) ? "Peds" : "Adult")) continue;
-                sections.computeIfAbsent(bucket + " — " + category(c.protocolNumber, labels), k -> new LinkedHashMap<String, List<ManualChanges.Change>>())
+                sections.computeIfAbsent(bucket + " — " + category(p, labels), k -> new LinkedHashMap<String, List<ManualChanges.Change>>())
                         .computeIfAbsent(c.protocolNumber, k -> new ArrayList<ManualChanges.Change>()).add(c);
             }
         int protocolCount = 0;
@@ -60,8 +60,9 @@ public class ChangeReportWriter {
             html.append("<h2>").append(HtmlSupport.esc(section.getKey())).append("</h2>\n");
             for (List<ManualChanges.Change> rows : section.getValue().values()) {
                 ManualChanges.Change first = rows.get(0);
-                html.append("<div class=\"protocol\">\n<h3>").append(HtmlSupport.esc(first.protocolNumber)).append(" &mdash; ")
-                        .append(HtmlSupport.esc(first.protocolName)).append("</h3>\n");
+                html.append("<div class=\"protocol\">\n<h3>")
+                        .append(HtmlSupport.esc(first.displayNumber.isEmpty() ? first.protocolName : first.displayNumber + " \u2014 " + first.protocolName))
+                        .append("</h3>\n");
                 html.append("<table>\n<tr><th class=\"where\">Where</th><th class=\"setting\">Setting</th><th class=\"old\">Scanner</th><th>Changed to</th></tr>\n");
                 for (ManualChanges.Change c : rows) {
                     html.append("<tr><td>").append(HtmlSupport.esc(c.where)).append("</td><td>").append(HtmlSupport.esc(c.setting))
@@ -80,7 +81,12 @@ public class ChangeReportWriter {
         return HtmlSupport.esc(s).replace("\n", "<br/>");
     }
 
-    private static String category(String number, LabelConfig labels) {
+    private static String category(Protocol p, LabelConfig labels) {
+        if (p.getMetadata() != null && p.getMetadata().getSection() != null) {
+            String label = labels.categoryForNumber(p.getMetadata().getSection());
+            return label != null ? label : "Other";
+        }
+        String number = p.getMetadata() == null ? null : p.getMetadata().getProtocolNumber();
         try {
             String label = labels.categoryForNumber(Integer.parseInt(number.split("\\.")[0]));
             if (label != null) return label;

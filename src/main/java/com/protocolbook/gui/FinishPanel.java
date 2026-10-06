@@ -230,7 +230,7 @@ final class FinishPanel extends JPanel implements ProtocolBuilderGui.Refreshable
         @Override public Object getValueAt(int r, int c) {
             ManualChanges.Change ch = rows.get(r);
             switch (c) {
-                case 0: return ch.protocolNumber;
+                case 0: return ch.displayNumber;
                 case 1: return ch.protocolName;
                 case 2: return ch.where;
                 case 3: return ch.setting;

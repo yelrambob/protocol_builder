@@ -60,6 +60,12 @@ public class LabelConfig {
         DEFAULT_CATEGORY_LABELS.put("17", "Spine");
         DEFAULT_CATEGORY_LABELS.put("18", "Pelvis");
         DEFAULT_CATEGORY_LABELS.put("19", "Lower Ext.");
+        // Siemens regions with no GE console number (see SiemensWorkbookParser#section); 23 (Private:
+        // phantom/QA tests) is deliberately unlabelled, so it stays out of the book like 10.x.
+        DEFAULT_CATEGORY_LABELS.put("21", "Vascular");
+        DEFAULT_CATEGORY_LABELS.put("22", "Specials");
+        DEFAULT_CATEGORY_LABELS.put("31", "Vascular");
+        DEFAULT_CATEGORY_LABELS.put("32", "Specials");
     }
 
     private final Map<String, String> kernelLabels;
