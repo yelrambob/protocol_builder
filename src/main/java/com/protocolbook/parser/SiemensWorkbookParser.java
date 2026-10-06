@@ -31,8 +31,8 @@ import java.util.*;
  *
  * Siemens doesn't number protocols, so each protocol's key in protocol-overrides.json is
  * "Region/Protocol name" (the same name can be filed under two regions); nothing is shown as its number.
- * The region picks the book section (see {@link #section}). The export carries no contrast settings and
- * no iterative-reconstruction (ADMIRE/SAFIRE) strength.
+ * The region picks the book section (see {@link #section}). The export carries no contrast settings; the
+ * SAFIRE strength is read from the series description (see {@link #safire}).
  */
 public class SiemensWorkbookParser implements ProtocolParser {
     public static final String SCANNER = "Siemens SOMATOM";
@@ -281,6 +281,7 @@ public class SiemensWorkbookParser implements ProtocolParser {
             r.setInterval(v.get("ReconIncr"));
             r.setKernel(v.get("Kernel"));
             r.setWindowName(v.get("Window"));
+            r.setIterativeConfig(safire(description, r.getKernel()));
             r.setDerived(description.toUpperCase(Locale.ROOT).matches(".*\\bMPR\\b.*"));
             try { if (v.get("NoOfImages") != null) r.setNumberOfImages(Integer.valueOf(v.get("NoOfImages"))); } catch (NumberFormatException ignored) {}
             for (String t : new String[] {"Transfer1", "Transfer2", "Transfer3"}) {
@@ -306,6 +307,18 @@ public class SiemensWorkbookParser implements ProtocolParser {
                 s.getGroups().get(0).getAcquisition().setDoseModulation(text);
             }
         }
+    }
+
+    /**
+     * The SAFIRE strength, which the scanner adds to the series description right after the kernel when
+     * SAFIRE is on ("Abdomen 4.0 Br40 3" is Br40 with SAFIRE 3); null when there's no strength there
+     * ("Head 4.0 Hr38", "1.0 Hr60 ax").
+     */
+    static String safire(String description, String kernel) {
+        if (description == null || kernel == null || kernel.trim().isEmpty()) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)(?:^|\\s)" + java.util.regex.Pattern.quote(kernel.trim()) + "\\s+([1-5])(?=\\s|$)")
+                .matcher(description);
+        return m.find() ? "SAFIRE " + m.group(1) : null;
     }
 
     private static String field(String header) {

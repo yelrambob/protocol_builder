@@ -146,12 +146,25 @@ class SiemensWorkbookParserTest {
         assertTrue(recons.get(1).isDerived());
         assertEquals(Arrays.asList("PROD_PACS", "SYNGO_VIA"), recons.get(1).getSendDestinations());
         assertEquals("Abdomen", recons.get(0).getWindowName());
+        assertEquals("SAFIRE 1", recons.get(0).getIterativeConfig(), "strength the scanner adds after the kernel");
+        assertNull(recons.get(1).getIterativeConfig(), "an MPR description has no strength");
 
         Protocol neck = protocols.get(1);
         assertEquals("Neck/NECK_AND_CHEST (Adult)", neck.getMetadata().getProtocolNumber());
         assertEquals("Dose modulation off", neck.getSeries().get(0).getGroups().get(0).getAcquisition().getDoseModulation());
         assertEquals(4, protocols.get(2).getMetadata().getSection(), "UpperExtremities -> Upper Ext.");
         assertEquals(23, protocols.get(3).getMetadata().getSection(), "Private (phantom tests)");
+    }
+
+    @Test void safireStrengthOnlyRightAfterTheKernel() {
+        assertEquals("SAFIRE 3", SiemensWorkbookParser.safire("2.0 Br38 3 AX ST", "Br38"));
+        assertEquals("SAFIRE 2", SiemensWorkbookParser.safire("Abdomen  4.0  Br40  2", "Br40"));
+        assertNull(SiemensWorkbookParser.safire("Head 4.0 Hr38", "Hr38"));
+        assertNull(SiemensWorkbookParser.safire("1.0 Hr60 ax", "Hr60"));
+        assertNull(SiemensWorkbookParser.safire("InnerEarUHR 0.4 Ur68 RT SIDE", "Ur68"));
+        assertNull(SiemensWorkbookParser.safire("Head 5.0 Hc40 40X0.6SPI", "Hc40"));
+        assertNull(SiemensWorkbookParser.safire("Thorax 4.0 Br38 12", "Br38"), "not a strength (1-5)");
+        assertNull(SiemensWorkbookParser.safire("Topogram 1.0 Tr20", "Tr20"));
     }
 
     @Test void theBookShowsSiemensSettingsWithoutNumbersOrInventedContrast(@TempDir Path dir) throws Exception {
@@ -168,6 +181,7 @@ class SiemensWorkbookParserTest {
         assertTrue(html.contains("Scan delay: 80 sec"));
         assertFalse(html.contains("Protocol without contrast"), "the export says nothing about contrast");
         assertTrue(html.contains("<td>Abdomen</td>"), "named window preset in the WW/WL column");
+        assertTrue(html.contains("<td>SAFIRE 1</td>"), "SAFIRE strength in the ASIR column");
         assertTrue(html.contains("<th>Plane</th><th>kV</th><th>mAs</th>"));
         assertFalse(html.contains("CatphanTests"), "phantom tests stay out of the book");
     }
