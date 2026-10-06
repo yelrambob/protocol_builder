@@ -1,7 +1,9 @@
-# Builds the Windows app on every push: a per-user installer (no admin rights needed) and a portable
-# zip, both with Java built in. Download them from the run's "Artifacts" section on the Actions tab.
-# Pushing a tag like v1.0.0 also publishes them as a GitHub Release (a stable download link).
-name: Windows app
+# Builds the app on every push, with Java built in, for:
+#   Windows - a per-user installer (no admin rights needed) and a portable zip
+#   Linux   - a .deb package (Ubuntu 24.04+ / Debian 13+ / Mint 22+) and a portable .tar.gz
+# Download them from the run's "Artifacts" section on the Actions tab.
+# Pushing a tag like v1.0.0 also publishes all four as a GitHub Release (a stable download link).
+name: App packages
 
 on:
   push:
@@ -10,10 +12,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  package:
+  windows:
     runs-on: windows-2022
     permissions:
-      contents: write   # only used to publish a Release for v* tags
+      contents: read
+    outputs:
+      version: ${{ steps.names.outputs.version }}
 
     steps:
     - uses: actions/checkout@v4
@@ -69,9 +73,72 @@ jobs:
         name: ProtocolBuilder-${{ steps.names.outputs.version }}-portable
         path: dist/*-portable.zip
 
-    - name: Publish a Release (v* tags only)
-      if: startsWith(github.ref, 'refs/tags/v')
-      shell: pwsh
+  linux:
+    # The .deb's library dependencies are worked out on this machine, so it installs on this Ubuntu
+    # release and newer (and the Debian / Mint releases built on it); the .tar.gz runs on any 64-bit distro.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
+
+    - name: Make sure the .deb tools are there
+      run: command -v fakeroot >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q fakeroot)
+
+    - name: Build the app
+      # tests already run in the Windows job and in "Java CI with Gradle"
+      run: ./gradlew --no-daemon -PprotocolBuildDir=build appImage linuxInstaller
+
+    - name: Name the downloads
+      id: names
+      run: |
+        version=$(sed -n "s/^version = '\(.*\)'/\1/p" build.gradle)
+        mkdir -p dist
+        tar -C build/jpackage/app-image -czf "dist/ProtocolBuilder-$version-linux-portable.tar.gz" "Protocol Builder"
+        cp build/jpackage/deb/*.deb "dist/protocol-builder_${version}_amd64.deb"
+        ls -l dist
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the .deb
+      uses: actions/upload-artifact@v4
+      with:
+        name: ProtocolBuilder-${{ steps.names.outputs.version }}-linux-deb
+        path: dist/*.deb
+
+    - name: Upload the portable .tar.gz
+      uses: actions/upload-artifact@v4
+      with:
+        name: ProtocolBuilder-${{ steps.names.outputs.version }}-linux-portable
+        path: dist/*.tar.gz
+
+  release:
+    # v* tags only: one GitHub Release with the Windows and Linux files together
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ windows, linux ]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        path: dist
+        merge-multiple: true
+
+    - name: Publish the Release
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh release create "${{ github.ref_name }}" dist/* --title "Protocol Builder ${{ github.ref_name }}" --generate-notes
+        GH_REPO: ${{ github.repository }}
+      run: |
+        ls -l dist
+        gh release create "${{ github.ref_name }}" dist/* --title "Protocol Builder ${{ github.ref_name }}" --generate-notes

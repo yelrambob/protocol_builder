@@ -55,6 +55,7 @@ jar {
 // --- Packaging: the window as an app with Java built in (nothing to install first). ---
 // ./gradlew appImage          -> a folder with the app ("Protocol Builder.exe" on Windows) - zip it for the portable download
 // ./gradlew windowsInstaller  -> "Protocol Builder-<version>.exe", a per-user installer (no admin rights needed); Windows only
+// ./gradlew linuxInstaller    -> a .deb package (Ubuntu/Debian/Mint) with a menu entry; Linux only, needs dpkg-deb
 // Both need JDK 17+ with jpackage; the installer also needs the WiX Toolset 3 on Windows. The GitHub
 // workflow .github/workflows/windows-package.yml runs both on every push.
 def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
@@ -77,6 +78,8 @@ def jpackageArgs = { String type ->
                 '--jlink-options', '--strip-debug --no-header-files --no-man-pages --strip-native-commands',
                 '--icon', file(isWindows ? 'packaging/icon.ico' : 'packaging/icon.png').absolutePath,
                 '--dest', jpackageDir.get().dir(type).asFile.absolutePath]
+    if (type == 'deb') args += ['--linux-package-name', 'protocol-builder', '--linux-menu-group', 'Office;Graphics',
+                                '--linux-shortcut', '--linux-app-category', 'misc', '--linux-deb-maintainer', 'protocol-builder@users.noreply.github.com']
     if (type == 'exe') args += ['--win-per-user-install', '--win-menu', '--win-menu-group', 'Protocol Builder', '--win-shortcut',
                                 // the same id for every version, so a new installer replaces the old one
                                 '--win-upgrade-uuid', '6f1d3c9a-2b47-4e8e-9b0c-5a7e1f2d8c31']
@@ -101,5 +104,16 @@ tasks.register('windowsInstaller', Exec) {
     doFirst {
         delete jpackageDir.get().dir('exe')
         commandLine jpackageArgs('exe')
+    }
+}
+
+tasks.register('linuxInstaller', Exec) {
+    group = 'distribution'
+    description = 'Builds the Linux .deb package. Linux only.'
+    dependsOn 'installDist'
+    onlyIf { System.getProperty('os.name').toLowerCase().contains('linux') }
+    doFirst {
+        delete jpackageDir.get().dir('deb')
+        commandLine jpackageArgs('deb')
     }
 }

@@ -40,18 +40,25 @@ Every edit is saved to `protocol-overrides.json` straight away (the previous ver
 
 The **Colors & logo** menu sets the book's two colors: a few ready-made pairs, or *Choose main color* / *Choose accent color* for any color. The window's header bar shows the current pair. *Choose logo…* puts your logo on the book (cover, sidebar and every page header): it's saved as `logo.png` next to the changes file, where the command line looks for it too, and shown in the window's header bar. *Remove logo* takes it off. The choice, along with the folders, title, file name and output boxes, is remembered for next time.
 
-## Installing the app (Windows)
+## Installing the app (Windows and Linux)
 
-Every push builds the Windows app on GitHub (*Actions* tab → *Windows app* → the latest run → *Artifacts*), with Java built in, so nothing else needs installing:
+Every push builds the app on GitHub (*Actions* tab → *App packages* → the latest run → *Artifacts*), with Java built in, so nothing else needs installing.
+
+**Windows:**
 
 - **`ProtocolBuilder-<version>-Setup.exe`** (recommended): installs for the current user only, so **no admin rights are needed**. It adds *Protocol Builder* to the Start menu and the desktop, and can be removed from *Settings → Apps* like any program. Installing a newer version replaces the old one; your files are kept.
 - **`ProtocolBuilder-<version>-portable.zip`**: the same app without installing. Unzip anywhere (even a USB stick) and run *Protocol Builder.exe*, for PCs where installers are blocked.
 
-The installed app keeps your changes file, labels, logo and pictures in **`Documents\Protocol Builder`** by default (*Help → About* shows where), and you can pick any other folder on the first screen. Given arguments, *Protocol Builder.exe* works like the command line (`"Protocol Builder.exe" <input> --pdf book.pdf ...`).
+**Linux:**
 
-To publish a release with a stable download link, raise `version` in `build.gradle`, then push a tag with that version (`git tag v1.1.0 && git push origin v1.1.0`); the workflow attaches both files to a GitHub Release. Until the app is code-signed, Windows SmartScreen may say *"Windows protected your PC"* the first time; choose *More info → Run anyway*.
+- **`protocol-builder_<version>_amd64.deb`** for Ubuntu 24.04+, Debian 13+ and Linux Mint 22+: `sudo apt install ./protocol-builder_1.0.0_amd64.deb` (or double-click it). It installs to `/opt/protocol-builder` and adds *Protocol Builder* to the applications menu; remove it with `sudo apt remove protocol-builder`.
+- **`ProtocolBuilder-<version>-linux-portable.tar.gz`** for any 64-bit distribution, including older ones: `tar -xzf ProtocolBuilder-1.0.0-linux-portable.tar.gz`, then run `"Protocol Builder/bin/Protocol Builder"`.
 
-To build locally: `./gradlew appImage` (any OS, needs JDK 17+) or `gradlew.bat windowsInstaller` (Windows, also needs the [WiX Toolset 3](https://github.com/wixtoolset/wix3/releases)); output in the build folder's `jpackage/`.
+The installed app keeps your changes file, labels, logo and pictures in **`Documents\Protocol Builder`** (`~/Documents/Protocol Builder` on Linux) by default (*Help → About* shows where), and you can pick any other folder on the first screen. Given arguments, *Protocol Builder.exe* works like the command line (`"Protocol Builder.exe" <input> --pdf book.pdf ...`).
+
+To publish a release with a stable download link, raise `version` in `build.gradle`, then push a tag with that version (`git tag v1.1.0 && git push origin v1.1.0`); the workflow attaches all four files to a GitHub Release. Until the app is code-signed, Windows SmartScreen may say *"Windows protected your PC"* the first time; choose *More info → Run anyway*.
+
+To build locally: `./gradlew appImage` (any OS, needs JDK 17+), `gradlew.bat windowsInstaller` (Windows, also needs the [WiX Toolset 3](https://github.com/wixtoolset/wix3/releases)) or `./gradlew linuxInstaller` (Linux, needs `dpkg-deb` and `fakeroot`); output in the build folder's `jpackage/`.
 
 ## Siemens SOMATOM exports
 
