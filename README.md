@@ -40,6 +40,19 @@ Every edit is saved to `protocol-overrides.json` straight away (the previous ver
 
 The **Colors & logo** menu sets the book's two colors: a few ready-made pairs, or *Choose main color* / *Choose accent color* for any color. The window's header bar shows the current pair. *Choose logo…* puts your logo on the book (cover, sidebar and every page header): it's saved as `logo.png` next to the changes file, where the command line looks for it too, and shown in the window's header bar. *Remove logo* takes it off. The choice, along with the folders, title, file name and output boxes, is remembered for next time.
 
+## Installing the app (Windows)
+
+Every push builds the Windows app on GitHub (*Actions* tab → *Windows app* → the latest run → *Artifacts*), with Java built in, so nothing else needs installing:
+
+- **`ProtocolBuilder-<version>-Setup.exe`** (recommended): installs for the current user only, so **no admin rights are needed**. It adds *Protocol Builder* to the Start menu and the desktop, and can be removed from *Settings → Apps* like any program. Installing a newer version replaces the old one; your files are kept.
+- **`ProtocolBuilder-<version>-portable.zip`**: the same app without installing. Unzip anywhere (even a USB stick) and run *Protocol Builder.exe*, for PCs where installers are blocked.
+
+The installed app keeps your changes file, labels, logo and pictures in **`Documents\Protocol Builder`** by default (*Help → About* shows where), and you can pick any other folder on the first screen. Given arguments, *Protocol Builder.exe* works like the command line (`"Protocol Builder.exe" <input> --pdf book.pdf ...`).
+
+To publish a release with a stable download link, raise `version` in `build.gradle`, then push a tag with that version (`git tag v1.1.0 && git push origin v1.1.0`); the workflow attaches both files to a GitHub Release. Until the app is code-signed, Windows SmartScreen may say *"Windows protected your PC"* the first time; choose *More info → Run anyway*.
+
+To build locally: `./gradlew appImage` (any OS, needs JDK 17+) or `gradlew.bat windowsInstaller` (Windows, also needs the [WiX Toolset 3](https://github.com/wixtoolset/wix3/releases)); output in the build folder's `jpackage/`.
+
 ## Siemens SOMATOM exports
 
 A Siemens protocol export opened into Excel (`.xlsm`/`.xlsx`) is read as well: the scanner's protocol XML flattened to one row per value, with `FolderName`, `BodySize`, `RegionName`, `ProtocolName`, `ScanType` on every row, then one column per setting (`Range`, `Voltage`, `QualityRefMAs`, `CustomMAs`, `Care`, `CareDoseType`, `CAREkV`, `CTDIw`, `RotTime`, `Delay`, `PitchFactor`, `Acq.`, `SeriesDescription`, `ReconSliceEffective`, `ReconIncr`, `Kernel`, `Window`, `Transfer1-3`, ...). Excel's XML map adds a running number to each column name (`Voltage4`, `Kernel34`); that's ignored. Columns before `FolderName`, if any, are ignored too.

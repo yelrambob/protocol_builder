@@ -51,6 +51,11 @@ public class ProtocolBuilderGui extends JFrame {
     private boolean switching;
 
     public static void main(String[] args) {
+        // With arguments, the installed app works like the command line ("Protocol Builder" <input> --pdf book.pdf ...).
+        if (args.length > 0) {
+            com.protocolbook.Main.main(args);
+            return;
+        }
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {
@@ -65,6 +70,8 @@ public class ProtocolBuilderGui extends JFrame {
         setSize(1280, 820);
         setMinimumSize(new Dimension(960, 600));
         setLocationRelativeTo(null);
+        java.net.URL icon = ProtocolBuilderGui.class.getResource("icon.png");
+        if (icon != null) setIconImage(new ImageIcon(icon).getImage());
 
         headerTitle.setFont(headerTitle.getFont().deriveFont(Font.BOLD, 20f));
         headerStep.setFont(headerStep.getFont().deriveFont(14f));
@@ -215,9 +222,14 @@ public class ProtocolBuilderGui extends JFrame {
         bar.add(colorsMenu);
 
         JMenu help = new JMenu("Help");
+        JMenuItem about = new JMenuItem("About");
+        about.addActionListener(e -> JOptionPane.showMessageDialog(this, "Protocol Builder " + AppInfo.version()
+                + "\n\nYour files are kept in: " + (session != null ? session.settingsDir : AppInfo.defaultFolder()).getAbsolutePath(),
+                "About", JOptionPane.INFORMATION_MESSAGE));
         JMenuItem how = new JMenuItem("How this works");
         how.addActionListener(e -> JOptionPane.showMessageDialog(this, HELP, "How this works", JOptionPane.INFORMATION_MESSAGE));
         help.add(how);
+        help.add(about);
         bar.add(help);
         return bar;
     }

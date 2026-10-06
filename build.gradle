@@ -4,7 +4,8 @@ plugins {
 }
 
 group = 'com.protocolbook'
-version = '1.0'
+// Shown in Help > About and used as the installer's version - raise it for each release (numbers only, e.g. 1.1.0).
+version = '1.0.0'
 
 // VS Code/OneDrive can keep generated class directories locked on Windows.
 // Put disposable output outside OneDrive, with an explicit override available for CI.
@@ -45,4 +46,60 @@ tasks.register('gui', JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.protocolbook.gui.ProtocolBuilderGui'
     workingDir = projectDir
+}
+
+jar {
+    manifest { attributes('Implementation-Title': 'Protocol Builder', 'Implementation-Version': project.version) }
+}
+
+// --- Packaging: the window as an app with Java built in (nothing to install first). ---
+// ./gradlew appImage          -> a folder with the app ("Protocol Builder.exe" on Windows) - zip it for the portable download
+// ./gradlew windowsInstaller  -> "Protocol Builder-<version>.exe", a per-user installer (no admin rights needed); Windows only
+// Both need JDK 17+ with jpackage; the installer also needs the WiX Toolset 3 on Windows. The GitHub
+// workflow .github/workflows/windows-package.yml runs both on every push.
+def isWindows = System.getProperty('os.name').toLowerCase().contains('windows')
+def jpackageDir = layout.buildDirectory.dir('jpackage')
+def jpackageArgs = { String type ->
+    def lib = installDist.destinationDir.toPath().resolve('lib').toString()
+    def args = ['jpackage', '--type', type,
+                '--name', 'Protocol Builder',
+                '--app-version', project.version.toString(),
+                '--vendor', 'Protocol Builder',
+                '--description', 'Builds a printable CT protocol book from scanner exports',
+                '--input', lib,
+                '--main-jar', jar.archiveFileName.get(),
+                '--main-class', 'com.protocolbook.gui.ProtocolBuilderGui',
+                '--java-options', '-Dfile.encoding=UTF-8',
+                // Only the parts of Java the app and its libraries use (keeps the download ~half the size).
+                // POI's jars can't be scanned by jdeps, hence the extra XML/crypto/zip/charset modules.
+                '--add-modules', 'java.base,java.desktop,java.xml,java.xml.crypto,java.logging,java.prefs,java.naming,java.sql,' +
+                        'java.management,java.scripting,jdk.unsupported,jdk.charsets,jdk.localedata,jdk.crypto.ec,jdk.zipfs',
+                '--jlink-options', '--strip-debug --no-header-files --no-man-pages --strip-native-commands',
+                '--icon', file(isWindows ? 'packaging/icon.ico' : 'packaging/icon.png').absolutePath,
+                '--dest', jpackageDir.get().dir(type).asFile.absolutePath]
+    if (type == 'exe') args += ['--win-per-user-install', '--win-menu', '--win-menu-group', 'Protocol Builder', '--win-shortcut',
+                                // the same id for every version, so a new installer replaces the old one
+                                '--win-upgrade-uuid', '6f1d3c9a-2b47-4e8e-9b0c-5a7e1f2d8c31']
+    args
+}
+
+tasks.register('appImage', Exec) {
+    group = 'distribution'
+    description = 'Builds the app folder with Java built in (portable).'
+    dependsOn 'installDist'
+    doFirst {
+        delete jpackageDir.get().dir('app-image')
+        commandLine jpackageArgs('app-image')
+    }
+}
+
+tasks.register('windowsInstaller', Exec) {
+    group = 'distribution'
+    description = 'Builds the per-user Windows installer (.exe). Windows only.'
+    dependsOn 'installDist'
+    onlyIf { isWindows }
+    doFirst {
+        delete jpackageDir.get().dir('exe')
+        commandLine jpackageArgs('exe')
+    }
 }

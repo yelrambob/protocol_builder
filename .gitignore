@@ -19,3 +19,6 @@ duplicates.html
 
 # Backup written by --init-overrides before it rewrites the overrides file.
 *.bak
+
+# Packaged downloads built by the Windows workflow
+/dist/

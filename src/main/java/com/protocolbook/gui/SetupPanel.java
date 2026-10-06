@@ -22,7 +22,7 @@ final class SetupPanel extends JPanel {
     SetupPanel(ProtocolBuilderGui gui) {
         super(new BorderLayout());
         this.gui = gui;
-        File cwd = new File(System.getProperty("user.dir"));
+        File cwd = AppInfo.defaultFolder();
         input.setText(gui.prefs.get("input", new File(cwd, "protocol data").getPath()));
         overrides.setText(gui.prefs.get("overrides", new File(cwd, "protocol-overrides.json").getPath()));
 
